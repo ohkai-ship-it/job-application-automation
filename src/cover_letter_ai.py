@@ -91,17 +91,38 @@ class CoverLetterGenerator:
         return 'german' if german_count > english_count else 'english'
     
     def detect_seniority(self, job_title, job_description):
-        """Detect seniority level of the position"""
+        """
+        Detect seniority level of the position
+        
+        Args:
+            job_title (str): The job title
+            job_description (str): The full job description
+            
+        Returns:
+            str: Seniority level - 'junior', 'mid', 'senior', or 'executive'
+        """
         text = (job_title + " " + job_description).lower()
         
-        if any(word in text for word in ['junior', 'entry', 'graduate', 'trainee', 'associate']):
-            return 'junior'
-        elif any(word in text for word in ['senior', 'lead', 'principal', 'staff', 'expert']):
-            return 'senior'
-        elif any(word in text for word in ['head', 'director', 'vp', 'chief', 'c-level']):
+        # Executive level (most specific)
+        executive_keywords = ['head', 'director', 'vp', 'vice president', 'chief', 
+                            'cto', 'ceo', 'cfo', 'c-level']
+        if any(word in text for word in executive_keywords):
             return 'executive'
-        else:
-            return 'mid'
+        
+        # Senior level
+        senior_keywords = ['senior', 'lead', 'principal', 'staff', 'expert', 
+                          'manager', 'architect']
+        if any(word in text for word in senior_keywords):
+            return 'senior'
+        
+        # Junior level
+        junior_keywords = ['junior', 'entry', 'graduate', 'trainee', 'associate', 
+                          'intern', 'werkstudent']
+        if any(word in text for word in junior_keywords):
+            return 'junior'
+        
+        # Default to mid-level
+        return 'mid'
     
     def generate_cover_letter(self, job_data, target_language=None):
         """
