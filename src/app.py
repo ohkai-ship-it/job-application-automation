@@ -6,14 +6,38 @@ Simple Flask web app for easy job processing
 from flask import Flask, render_template, request, jsonify, send_file
 import sys
 import os
+from pathlib import Path
 sys.path.append(os.path.dirname(__file__))
 
 from main import process_job_posting
+from utils.env import load_env, get_str, validate_env
 import threading
 import json
 from datetime import datetime
 
+# Validate environment at startup
+try:
+    from utils.env import validate_all_env
+    validate_all_env()
+except ValueError as e:
+    print("\n⚠️  Environment Validation Error:")
+    print(str(e))
+    sys.exit(1)
+except Exception as e:
+    print(f"\n⚠️  Unexpected error during environment validation: {e}")
+    sys.exit(1)
+
+# Flask configuration
 app = Flask(__name__, template_folder='../templates')
+app.config.update(
+    HOST=get_str('FLASK_HOST', '127.0.0.1'),
+    PORT=int(get_str('FLASK_PORT', '5000')),
+    DEBUG=get_str('FLASK_DEBUG', 'False').lower() == 'true'
+)
+
+# Paths configuration
+OUTPUT_DIR = Path(get_str('OUTPUT_DIR', 'output'))
+DATA_DIR = Path(get_str('DATA_DIR', 'data'))
 
 # Store processing status
 processing_status = {}
@@ -58,6 +82,8 @@ def process_in_background(job_id, url):
         result = process_job_posting(url, generate_cover_letter=True, generate_pdf=True)
         
         if result['status'] == 'success':
+            def to_str(val):
+                return str(val) if isinstance(val, Path) else val
             processing_status[job_id] = {
                 'status': 'complete',
                 'message': 'Automation complete!',
@@ -68,10 +94,10 @@ def process_in_background(job_id, url):
                     'location': result['job_data'].get('location'),
                     'trello_card': result['trello_card']['shortUrl'],
                     'files': {
-                        'json': result['data_file'],
-                        'txt': result.get('cover_letter_text_file'),
-                        'docx': result.get('cover_letter_docx_file'),
-                        'pdf': result.get('cover_letter_pdf_file')
+                        'json': to_str(result['data_file']),
+                        'txt': to_str(result.get('cover_letter_text_file')),
+                        'docx': to_str(result.get('cover_letter_docx_file')),
+                        'pdf': to_str(result.get('cover_letter_pdf_file'))
                     }
                 }
             }
@@ -101,7 +127,12 @@ def status(job_id):
 def download(filename):
     """Download generated file"""
     try:
-        return send_file(filename, as_attachment=True)
+        # Determine correct directory based on file type
+        if filename.startswith('scraped_job_'):
+            filepath = DATA_DIR / filename
+        else:
+            filepath = OUTPUT_DIR / filename
+        return send_file(str(filepath), as_attachment=True)
     except Exception as e:
         return jsonify({'error': str(e)}), 404
 
@@ -122,14 +153,24 @@ def history():
     return jsonify({'jobs': jobs})
 
 if __name__ == '__main__':
-    # Create templates directory if it doesn't exist
+    # Ensure required directories exist
     os.makedirs('templates', exist_ok=True)
+    os.makedirs(DATA_DIR, exist_ok=True)
+    os.makedirs(OUTPUT_DIR, exist_ok=True)
     
     print("\n" + "=" * 80)
     print("JOB APPLICATION AUTOMATION - Web Interface")
     print("=" * 80)
-    print("\n🌐 Starting web server...")
-    print("📱 Open your browser and go to: http://localhost:5000")
+    
+    host = app.config['HOST']
+    port = app.config['PORT']
+    debug = app.config['DEBUG']
+    
+    print(f"\n🌐 Starting web server...")
+    print(f"📱 Open your browser and go to: http://{host}:{port}")
+    print(f"⚙️  Debug mode: {'enabled' if debug else 'disabled'}")
     print("⏹️  Press Ctrl+C to stop the server\n")
+    
+    app.run(host=host, port=port, debug=debug)
     
     app.run(debug=True, host='0.0.0.0', port=5000)

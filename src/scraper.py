@@ -1,25 +1,31 @@
 import requests
-from bs4 import BeautifulSoup
+from bs4 import BeautifulSoup, Tag
 from datetime import datetime
 import json
 import re
+from pathlib import Path
+from typing import Optional, Dict, Any, Tuple, List, Union
 
+# Type aliases for clarity
+JobData = Dict[str, Any]
+Address = Dict[str, str]
+JsonLD = Dict[str, Any]
 
-def clean_job_title(title):
+def clean_job_title(title: Optional[str]) -> Optional[str]:
     """
     Remove gender markers from job titles
     
     Args:
-        title (str): Original job title
+        title: Original job title
         
     Returns:
-        str: Cleaned job title
+        Cleaned job title or None if input was None
     """
     if not title:
         return title
     
     # Common gender markers to remove
-    gender_patterns = [
+    gender_patterns: List[str] = [
         r'\(m/w/d\)', r'\(w/m/d\)', r'\(d/m/w\)',
         r'\(m/f/d\)', r'\(f/m/d\)', r'\(gn\)',
         r'\(m/w\)', r'\(w/m\)',
@@ -40,15 +46,28 @@ def clean_job_title(title):
     return cleaned
 
 
-def split_address(address_dict):
+def scrape_stepstone_job(url: str) -> Optional[JobData]:
+    """
+    Scrape job posting data from Stepstone
+    
+    Args:
+        url: URL of the Stepstone job posting
+        
+    Returns:
+        Dictionary containing job data or None if scraping failed
+    """
+
+
+
+def split_address(address_dict: Address) -> Tuple[str, str]:
     """
     Split address into two lines for letter formatting
     
     Args:
-        address_dict (dict): Address dictionary from JSON-LD
+        address_dict: Address dictionary containing street, postal code, city
         
     Returns:
-        tuple: (line1, line2) where line1 is street, line2 is postal/city
+        Tuple of (line1, line2) where line1 is street and line2 is postal code + city
     """
     line1 = address_dict.get('streetAddress', '')
     
@@ -64,15 +83,15 @@ def split_address(address_dict):
     return (line1, line2)
 
 
-def scrape_stepstone_job(url):
+def scrape_stepstone_job(url: str) -> Optional[JobData]:
     """
     Scrapes a Stepstone job posting and extracts key information.
     
     Args:
-        url (str): The URL of the Stepstone job posting
+        url: The URL of the Stepstone job posting
         
     Returns:
-        dict: Dictionary containing extracted job information
+        Dictionary containing extracted job information or None if scraping failed
     """
     
     # Initialize result dictionary
@@ -332,11 +351,16 @@ def scrape_stepstone_job(url):
         return None
 
 
-def save_to_json(data, filename='job_data.json'):
-    """Save scraped data to JSON file"""
+def save_to_json(data: JobData, filename: Union[str, Path]) -> None:
+    """
+    Save scraped data to JSON file
+    
+    Args:
+        data: Job data dictionary to save
+        filename: Path to the output JSON file
+    """
     with open(filename, 'w', encoding='utf-8') as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
-    print(f"\n✓ Data saved to {filename}")
+        json.dump(data, f, indent=2, ensure_ascii=False)
 
 
 # Test function

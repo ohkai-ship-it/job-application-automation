@@ -5,13 +5,22 @@
 ### Environment Variable Cleanup
 - [x] Create central config module
 - [x] Update cover_letter_ai.py
-- [x] Update trello_manager.py
-- [ ] Update remaining modules (app.py, main.py)
-- [ ] Add environment validation to startup
+- [ ] Update trello_manager.py
+- [x] Update remaining modules (app.py, main.py)
+- [x] Add environment validation to startup
 
+### Code Organization
 ### Code Organization
 - [x] Create config module for environment variables
 - [ ] Add type hints
+    - [ ] utils/env.py (core module)
+    - [ ] scraper.py
+    - [ ] trello_manager.py
+    - [ ] cover_letter_ai.py
+    - [ ] docx_generator.py
+    - [ ] pdf_generator.py
+    - [ ] main.py
+    - [ ] app.py
 - [ ] Move helper functions to appropriate modules
 - [ ] Document public APIs
 

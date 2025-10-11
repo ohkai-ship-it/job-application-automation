@@ -1,12 +1,5 @@
 """
-cover_letter_ai.py
-Implements CoverLetterGenerator for AI-powered cover letter generation using OpenAI.
-Generates personalized cover letters based on CV and job description
-"""
-
-import os
-"""
-cover_letter_ai.py
+cover_letter.py
 Implements CoverLetterGenerator for AI-powered cover letter generation using OpenAI.
 Loads CVs, builds prompts, detects language/seniority, and saves cover letters.
 """
@@ -16,11 +9,11 @@ import re
 from pathlib import Path
 from typing import Optional, Dict, Any
 try:
-    from .utils.env import load_env, get_str
+    from .utils.env import get_str
 except ImportError:
     import sys
     sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-    from utils.env import load_env, get_str
+    from utils.env import get_str
 try:
     from openai import OpenAI
 except ImportError:
@@ -32,8 +25,6 @@ except ImportError:
 
 class CoverLetterGenerator:
     def __init__(self):
-        if 'OPENAI_API_KEY' not in os.environ:
-            load_env()
         self.api_key = get_str('OPENAI_API_KEY', default=None)
         if not self.api_key or self.api_key.strip() == '':
             raise ValueError("OPENAI_API_KEY not found in environment")

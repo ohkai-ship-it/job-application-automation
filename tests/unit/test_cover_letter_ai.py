@@ -1,8 +1,42 @@
 """
 Unit tests for cover letter AI functionality
 """
+import os
+from unittest import mock
 import pytest
-from src.cover_letter_ai import CoverLetterGenerator
+from src.cover_letter import CoverLetterGenerator
+from src.utils.env import load_env, validate_env
+from openai import OpenAIError
+
+@pytest.fixture(autouse=True)
+def mock_env():
+    """Fixture to provide mock environment for all tests"""
+    with mock.patch.dict(os.environ, {
+        'OPENAI_API_KEY': 'test-key',
+        'OPENAI_MODEL': 'test-model'
+    }, clear=True):
+        load_env()
+        yield
+
+def test_cover_letter_generator_init_with_env():
+    """Test CoverLetterGenerator initialization with environment variables"""
+    generator = CoverLetterGenerator()
+    assert generator.api_key == 'test-key'
+    assert generator.model == 'test-model'
+
+def test_cover_letter_generator_init_without_api_key():
+    """Test CoverLetterGenerator fails without API key"""
+    with mock.patch.dict(os.environ, {}, clear=True):
+        with pytest.raises((ValueError, OpenAIError)) as exc_info:
+            CoverLetterGenerator()
+        assert "OPENAI_API_KEY" in str(exc_info.value)
+
+def test_cover_letter_generator_init_with_default_model():
+    """Test CoverLetterGenerator uses default model if not in env"""
+    with mock.patch.dict(os.environ, {'OPENAI_API_KEY': 'test-key'}, clear=True):
+        generator = CoverLetterGenerator()
+        assert generator.api_key == 'test-key'
+        assert generator.model == 'gpt-4o-mini'  # Default model
 
 def test_detect_language():
     """Test language detection functionality"""

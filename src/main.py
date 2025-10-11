@@ -5,14 +5,32 @@ Scrapes Stepstone job postings, creates Trello cards, generates cover letters, a
 
 import sys
 import os
+from pathlib import Path
 sys.path.append(os.path.dirname(__file__))
 
 from scraper import scrape_stepstone_job, save_to_json
-from trello_manager import TrelloManager
-from cover_letter_ai import CoverLetterGenerator
+from trello_connect import TrelloConnect
+from cover_letter import CoverLetterGenerator
 from docx_generator import WordCoverLetterGenerator
+from utils.env import load_env, get_str, validate_env
 import json
 from datetime import datetime
+
+# Validate environment at startup
+try:
+    from utils.env import validate_all_env
+    validate_all_env()
+except ValueError as e:
+    print("\n⚠️  Environment Validation Error:")
+    print(str(e))
+    sys.exit(1)
+except Exception as e:
+    print(f"\n⚠️  Unexpected error during environment validation: {e}")
+    sys.exit(1)
+
+# Get configured paths
+DATA_DIR = Path(get_str('DATA_DIR', 'data'))
+OUTPUT_DIR = Path(get_str('OUTPUT_DIR', 'output'))
 
 
 def process_job_posting(url, generate_cover_letter=True, generate_pdf=True):
@@ -51,15 +69,15 @@ def process_job_posting(url, generate_cover_letter=True, generate_pdf=True):
     
     # Save scraped data
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-    filename = f"data/scraped_job_{timestamp}.json"
-    save_to_json(job_data, filename)
+    filename = DATA_DIR / f"scraped_job_{timestamp}.json"
+    save_to_json(job_data, str(filename))
     
     # Step 2: Create Trello card
     print("\n" + "=" * 80)
     print("STEP 2: Creating Trello card...")
     print("-" * 80)
     
-    trello = TrelloManager()
+    trello = TrelloConnect()
     card = trello.create_card_from_job_data(job_data)
     
     if not card:
