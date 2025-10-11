@@ -1,0 +1,49 @@
+"""
+Unit tests for scraper.py
+"""
+import pytest
+from src.scraper import clean_job_title, split_address
+
+def test_clean_job_title():
+    """Test gender marker removal from job titles"""
+    test_cases = [
+        ("Software Developer (m/w/d)", "Software Developer"),
+        ("Project Manager (f/m/d)", "Project Manager"),
+        ("Engineer (m/f/d) - Senior", "Engineer - Senior"),
+        ("Data Scientist", "Data Scientist"),  # No gender marker
+        ("DevOps Engineer (w/m/d) Berlin", "DevOps Engineer Berlin"),
+    ]
+    
+    for input_title, expected in test_cases:
+        assert clean_job_title(input_title) == expected
+
+def test_split_address():
+    """Test address splitting into lines"""
+    test_cases = [
+        (
+            {
+                "streetAddress": "Teststraße 123",
+                "postalCode": "12345",
+                "addressLocality": "Berlin"
+            },
+            ("Teststraße 123", "12345 Berlin")
+        ),
+        (
+            {
+                "streetAddress": "Hauptplatz 1",
+                "postalCode": "80331",
+                "addressLocality": "München"
+            },
+            ("Hauptplatz 1", "80331 München")
+        ),
+        (
+            # Minimal case
+            {
+                "streetAddress": "Am Bach 42",
+            },
+            ("Am Bach 42", "")
+        ),
+    ]
+    
+    for input_addr, expected in test_cases:
+        assert split_address(input_addr) == expected
