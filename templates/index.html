@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Job Application Automation</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        
+        .header {
+            text-align: center;
+            color: white;
+            margin-bottom: 40px;
+        }
+        
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+        
+        .header p {
+            font-size: 1.2em;
+            opacity: 0.9;
+        }
+        
+        .card {
+            background: white;
+            border-radius: 20px;
+            padding: 40px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            margin-bottom: 30px;
+        }
+        
+        .input-group {
+            margin-bottom: 20px;
+        }
+        
+        .input-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #333;
+        }
+        
+        .input-group input {
+            width: 100%;
+            padding: 15px;
+            border: 2px solid #e0e0e0;
+            border-radius: 10px;
+            font-size: 16px;
+            transition: border-color 0.3s;
+        }
+        
+        .input-group input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        
+        .btn {
+            width: 100%;
+            padding: 15px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 10px;
+            font-size: 18px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 30px rgba(102, 126, 234, 0.4);
+        }
+        
+        .btn:active {
+            transform: translateY(0);
+        }
+        
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
+        .status-card {
+            background: #f8f9fa;
+            border-radius: 15px;
+            padding: 20px;
+            margin-top: 20px;
+            display: none;
+        }
+        
+        .status-card.show {
+            display: block;
+        }
+        
+        .progress-bar {
+            width: 100%;
+            height: 8px;
+            background: #e0e0e0;
+            border-radius: 4px;
+            overflow: hidden;
+            margin: 15px 0;
+        }
+        
+        .progress-bar-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+            transition: width 0.3s ease;
+            width: 0%;
+        }
+        
+        .status-message {
+            color: #666;
+            margin-top: 10px;
+        }
+        
+        .result-card {
+            background: #e8f5e9;
+            border-radius: 15px;
+            padding: 20px;
+            margin-top: 20px;
+            display: none;
+        }
+        
+        .result-card.show {
+            display: block;
+        }
+        
+        .result-item {
+            padding: 10px 0;
+            border-bottom: 1px solid #c8e6c9;
+        }
+        
+        .result-item:last-child {
+            border-bottom: none;
+        }
+        
+        .result-label {
+            font-weight: 600;
+            color: #2e7d32;
+            margin-bottom: 5px;
+        }
+        
+        .result-value {
+            color: #333;
+        }
+        
+        .result-link {
+            color: #667eea;
+            text-decoration: none;
+            font-weight: 500;
+        }
+        
+        .result-link:hover {
+            text-decoration: underline;
+        }
+        
+        .error-card {
+            background: #ffebee;
+            border-radius: 15px;
+            padding: 20px;
+            margin-top: 20px;
+            display: none;
+            color: #c62828;
+        }
+        
+        .error-card.show {
+            display: block;
+        }
+        
+        .file-links {
+            display: flex;
+            gap: 10px;
+            margin-top: 10px;
+            flex-wrap: wrap;
+        }
+        
+        .file-link {
+            padding: 8px 16px;
+            background: #667eea;
+            color: white;
+            text-decoration: none;
+            border-radius: 8px;
+            font-size: 14px;
+            transition: background 0.3s;
+        }
+        
+        .file-link:hover {
+            background: #764ba2;
+        }
+        
+        .spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #667eea;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 20px auto;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🚀 Job Application Automation</h1>
+            <p>Scrape • Organize • Generate • Apply</p>
+        </div>
+        
+        <div class="card">
+            <div class="input-group">
+                <label for="jobUrl">Stepstone Job URL</label>
+                <input 
+                    type="text" 
+                    id="jobUrl" 
+                    placeholder="https://www.stepstone.de/stellenangebote--..."
+                    autofocus
+                >
+            </div>
+            
+            <button class="btn" id="processBtn" onclick="processJob()">
+                Process Job Application
+            </button>
+            
+            <div class="status-card" id="statusCard">
+                <div class="spinner"></div>
+                <div class="progress-bar">
+                    <div class="progress-bar-fill" id="progressBar"></div>
+                </div>
+                <div class="status-message" id="statusMessage">Processing...</div>
+            </div>
+            
+            <div class="result-card" id="resultCard">
+                <h2 style="color: #2e7d32; margin-bottom: 20px;">✓ Success!</h2>
+                
+                <div class="result-item">
+                    <div class="result-label">Company</div>
+                    <div class="result-value" id="resultCompany"></div>
+                </div>
+                
+                <div class="result-item">
+                    <div class="result-label">Position</div>
+                    <div class="result-value" id="resultTitle"></div>
+                </div>
+                
+                <div class="result-item">
+                    <div class="result-label">Location</div>
+                    <div class="result-value" id="resultLocation"></div>
+                </div>
+                
+                <div class="result-item">
+                    <div class="result-label">Trello Card</div>
+                    <a href="#" class="result-link" id="resultTrello" target="_blank">View Card →</a>
+                </div>
+                
+                <div class="result-item">
+                    <div class="result-label">Generated Files</div>
+                    <div class="file-links" id="fileLinks"></div>
+                </div>
+            </div>
+            
+            <div class="error-card" id="errorCard">
+                <strong>Error:</strong> <span id="errorMessage"></span>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        let currentJobId = null;
+        let statusCheckInterval = null;
+        
+        function processJob() {
+            const url = document.getElementById('jobUrl').value.trim();
+            
+            if (!url) {
+                alert('Please enter a job URL');
+                return;
+            }
+            
+            // Reset UI
+            document.getElementById('statusCard').classList.add('show');
+            document.getElementById('resultCard').classList.remove('show');
+            document.getElementById('errorCard').classList.remove('show');
+            document.getElementById('processBtn').disabled = true;
+            document.getElementById('progressBar').style.width = '0%';
+            
+            // Send request
+            fetch('/process', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ url: url })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    showError(data.error);
+                    return;
+                }
+                
+                currentJobId = data.job_id;
+                checkStatus();
+            })
+            .catch(error => {
+                showError(error.message);
+            });
+        }
+        
+        function checkStatus() {
+            if (!currentJobId) return;
+            
+            fetch(`/status/${currentJobId}`)
+                .then(response => response.json())
+                .then(data => {
+                    document.getElementById('statusMessage').textContent = data.message;
+                    document.getElementById('progressBar').style.width = data.progress + '%';
+                    
+                    if (data.status === 'complete') {
+                        showResult(data.result);
+                        document.getElementById('processBtn').disabled = false;
+                    } else if (data.status === 'error') {
+                        showError(data.message);
+                        document.getElementById('processBtn').disabled = false;
+                    } else {
+                        setTimeout(checkStatus, 1000);
+                    }
+                })
+                .catch(error => {
+                    showError(error.message);
+                    document.getElementById('processBtn').disabled = false;
+                });
+        }
+        
+        function showResult(result) {
+            document.getElementById('statusCard').classList.remove('show');
+            document.getElementById('resultCard').classList.add('show');
+            
+            document.getElementById('resultCompany').textContent = result.company || 'N/A';
+            document.getElementById('resultTitle').textContent = result.title || 'N/A';
+            document.getElementById('resultLocation').textContent = result.location || 'N/A';
+            
+            const trelloLink = document.getElementById('resultTrello');
+            trelloLink.href = result.trello_card;
+            
+            // File links
+            const fileLinksDiv = document.getElementById('fileLinks');
+            fileLinksDiv.innerHTML = '';
+            
+            const files = result.files;
+            if (files.pdf) {
+                fileLinksDiv.innerHTML += `<a href="/download/${files.pdf}" class="file-link">📄 PDF</a>`;
+            }
+            if (files.docx) {
+                fileLinksDiv.innerHTML += `<a href="/download/${files.docx}" class="file-link">📝 Word</a>`;
+            }
+            if (files.txt) {
+                fileLinksDiv.innerHTML += `<a href="/download/${files.txt}" class="file-link">📃 Text</a>`;
+            }
+            if (files.json) {
+                fileLinksDiv.innerHTML += `<a href="/download/${files.json}" class="file-link">📊 JSON</a>`;
+            }
+        }
+        
+        function showError(message) {
+            document.getElementById('statusCard').classList.remove('show');
+            document.getElementById('errorCard').classList.add('show');
+            document.getElementById('errorMessage').textContent = message;
+        }
+        
+        // Allow Enter key to submit
+        document.getElementById('jobUrl').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                processJob();
+            }
+        });
+    </script>
+</body>
+</html>

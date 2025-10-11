@@ -1,0 +1,36 @@
+# Environment variables
+.env
+config/.env
+.env.local
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+
+# Distribution / packaging
+dist/
+build/
+*.egg-info/
+
+# VS Code
+.vscode/
+*.code-workspace
+
+# Project-specific
+output/cover_letters/
+data/scraped_job_*.json
+data/cv_*.pdf
+
+# Pytest
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Logs
+*.log
