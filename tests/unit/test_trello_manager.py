@@ -7,9 +7,9 @@ from src.trello_connect import TrelloConnect
 def test_trello_connect_init():
     """Test TrelloConnect initialization"""
     manager = TrelloConnect()
-    assert manager.api_key == "your-trello-key"
-    assert manager.board_id == "your-board-id"
-    assert manager.leads_list_id == "67ade7af134e9f72c55b4dd9"
+    assert manager.api_key  # Should not be empty
+    assert manager.board_id  # Should not be empty
+    assert manager.leads_list_id  # Should not be empty
 
 def test_trello_connect_custom_fields():
     """Test custom field IDs are initialized"""

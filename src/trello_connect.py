@@ -7,6 +7,12 @@ Credentials/IDs are read from config/.env (with hardcoded fallbacks for dev).
 
 import os
 import requests
+try:
+    from .utils.logging import get_logger
+except ImportError:
+    import sys
+    sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+    from utils.logging import get_logger
 from typing import Dict, Any, Optional
 from datetime import datetime
 from pathlib import Path
@@ -19,7 +25,8 @@ except ImportError:
     from utils.env import load_env, get_str
 
 class TrelloConnect:
-    def __init__(self):
+    def __init__(self) -> None:
+        self.logger = get_logger(__name__)
         load_env()
         self.api_key = get_str('TRELLO_KEY', default='your-trello-key')
         self.token = get_str('TRELLO_TOKEN', default='your-trello-token')
@@ -60,12 +67,26 @@ class TrelloConnect:
             'desc': description,
             'pos': 'top',
         }
-        response = requests.post(create_url, params=params)
-        if response.status_code == 200:
-            return response.json()
-        else:
-            print(f"Trello API error: {response.status_code} - {response.text}")
-            return None
+        # Use requests.post directly to keep tests' monkeypatching behavior,
+        # but implement a small retry loop for transient errors.
+        retries = 2
+        backoff = 0.5
+        retry_on = (429, 500, 502, 503, 504)
+        for attempt in range(retries + 1):
+            response = requests.post(create_url, params=params)
+            if response.status_code < 400:
+                return response.json()
+            if response.status_code not in retry_on or attempt == retries:
+                # Keep logging for developers and also print a short line for tests (stdout capture)
+                self.logger.error(
+                    "Trello API error creating card (status %s): %s",
+                    response.status_code,
+                    response.text[:300],
+                )
+                print(f"Trello API error creating card (status {response.status_code})")
+                return None
+            import time
+            time.sleep(backoff * (2 ** attempt))
 
     def _build_card_description(self, job_data: Dict[str, Any]) -> str:
         lines = [

@@ -16,24 +16,32 @@ from utils.env import load_env, get_str, validate_env
 import json
 from datetime import datetime
 
-# Validate environment at startup
-try:
-    from utils.env import validate_all_env
-    validate_all_env()
-except ValueError as e:
-    print("\n⚠️  Environment Validation Error:")
-    print(str(e))
-    sys.exit(1)
-except Exception as e:
-    print(f"\n⚠️  Unexpected error during environment validation: {e}")
-    sys.exit(1)
+# Validate environment at startup (allow skipping in tests)
+skip_env = os.getenv('SKIP_ENV_VALIDATION', '0') == '1'
+if not skip_env:
+    try:
+        from utils.env import validate_all_env
+        validate_all_env()
+    except ValueError as e:
+        print("\n⚠️  Environment Validation Error:")
+        print(str(e))
+        sys.exit(1)
+    except Exception as e:
+        print(f"\n⚠️  Unexpected error during environment validation: {e}")
+        sys.exit(1)
 
 # Get configured paths
 DATA_DIR = Path(get_str('DATA_DIR', 'data'))
 OUTPUT_DIR = Path(get_str('OUTPUT_DIR', 'output'))
 
 
-def process_job_posting(url, generate_cover_letter=True, generate_pdf=True):
+from typing import Any, Dict, List, Optional
+
+def process_job_posting(
+    url: str,
+    generate_cover_letter: bool = True,
+    generate_pdf: bool = True
+) -> Dict[str, Any]:
     """
     Complete workflow: Scrape job posting, create Trello card, generate cover letter and PDF
     
@@ -180,7 +188,7 @@ def process_job_posting(url, generate_cover_letter=True, generate_pdf=True):
     }
 
 
-def batch_process_urls(urls):
+def batch_process_urls(urls: List[str]) -> List[Dict[str, Any]]:
     """
     Process multiple job posting URLs
     
@@ -232,7 +240,7 @@ def batch_process_urls(urls):
     return results
 
 
-def interactive_mode():
+def interactive_mode() -> None:
     """
     Interactive command-line interface
     """

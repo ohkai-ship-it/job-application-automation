@@ -24,7 +24,7 @@ except ImportError:
     pypdf = None
 
 class CoverLetterGenerator:
-    def __init__(self):
+    def __init__(self) -> None:
         self.api_key = get_str('OPENAI_API_KEY', default=None)
         if not self.api_key or self.api_key.strip() == '':
             raise ValueError("OPENAI_API_KEY not found in environment")

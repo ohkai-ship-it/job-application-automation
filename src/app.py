@@ -3,7 +3,7 @@ Web Interface for Job Application Automation
 Simple Flask web app for easy job processing
 """
 
-from flask import Flask, render_template, request, jsonify, send_file
+from flask import Flask, render_template, request, jsonify, send_file, Response
 import sys
 import os
 from pathlib import Path
@@ -15,17 +15,19 @@ import threading
 import json
 from datetime import datetime
 
-# Validate environment at startup
-try:
-    from utils.env import validate_all_env
-    validate_all_env()
-except ValueError as e:
-    print("\n⚠️  Environment Validation Error:")
-    print(str(e))
-    sys.exit(1)
-except Exception as e:
-    print(f"\n⚠️  Unexpected error during environment validation: {e}")
-    sys.exit(1)
+# Validate environment at startup (allow skipping in tests)
+skip_env = os.getenv('SKIP_ENV_VALIDATION', '0') == '1'
+if not skip_env:
+    try:
+        from utils.env import validate_all_env
+        validate_all_env()
+    except ValueError as e:
+        print("\n⚠️  Environment Validation Error:")
+        print(str(e))
+        sys.exit(1)
+    except Exception as e:
+        print(f"\n⚠️  Unexpected error during environment validation: {e}")
+        sys.exit(1)
 
 # Flask configuration
 app = Flask(__name__, template_folder='../templates')
@@ -43,12 +45,12 @@ DATA_DIR = Path(get_str('DATA_DIR', 'data'))
 processing_status = {}
 
 @app.route('/')
-def index():
+def index() -> str:
     """Main page"""
     return render_template('index.html')
 
 @app.route('/process', methods=['POST'])
-def process():
+def process() -> Response:
     """Process a job URL"""
     data = request.json
     url = data.get('url')
@@ -73,7 +75,7 @@ def process():
     
     return jsonify({'job_id': job_id})
 
-def process_in_background(job_id, url):
+def process_in_background(job_id: str, url: str) -> None:
     """Process job in background"""
     try:
         processing_status[job_id]['message'] = 'Scraping job posting...'
@@ -116,7 +118,7 @@ def process_in_background(job_id, url):
         }
 
 @app.route('/status/<job_id>')
-def status(job_id):
+def status(job_id: str) -> Response:
     """Get processing status"""
     if job_id not in processing_status:
         return jsonify({'error': 'Job not found'}), 404
@@ -124,7 +126,7 @@ def status(job_id):
     return jsonify(processing_status[job_id])
 
 @app.route('/download/<path:filename>')
-def download(filename):
+def download(filename: str) -> Response:
     """Download generated file"""
     try:
         # Determine correct directory based on file type
@@ -137,7 +139,7 @@ def download(filename):
         return jsonify({'error': str(e)}), 404
 
 @app.route('/history')
-def history():
+def history() -> Response:
     """Get processing history"""
     # Sort by most recent first
     jobs = []
@@ -172,5 +174,3 @@ if __name__ == '__main__':
     print("⏹️  Press Ctrl+C to stop the server\n")
     
     app.run(host=host, port=port, debug=debug)
-    
-    app.run(debug=True, host='0.0.0.0', port=5000)

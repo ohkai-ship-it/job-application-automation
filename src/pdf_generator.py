@@ -12,8 +12,10 @@ from reportlab.lib import colors
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.platypus.flowables import HRFlowable
+
 from datetime import datetime
 import os
+from typing import Dict, Any
 
 
 class CoverLetterPDF:
@@ -21,7 +23,7 @@ class CoverLetterPDF:
     Generates formatted cover letter PDFs matching your personal style
     """
     
-    def __init__(self):
+    def __init__(self) -> None:
         self.page_width, self.page_height = A4
         self.margin_left = 2.5 * cm
         self.margin_right = 2.5 * cm
@@ -47,7 +49,12 @@ class CoverLetterPDF:
             'light_gray': colors.HexColor('#95A5A6')   # Light gray for lines
         }
     
-    def generate_pdf(self, cover_letter_text, job_data, output_path):
+    def generate_pdf(
+        self,
+        cover_letter_text: str,
+        job_data: Dict[str, Any],
+        output_path: str
+    ) -> str:
         """
         Generate a formatted PDF cover letter
         
@@ -239,7 +246,7 @@ class CoverLetterPDF:
         
         return output_path
     
-    def _create_styles(self):
+    def _create_styles(self) -> Dict[str, ParagraphStyle]:
         """Create custom paragraph styles"""
         
         styles = {}
@@ -349,7 +356,7 @@ class CoverLetterPDF:
         
         return styles
     
-    def _detect_language(self, text):
+    def _detect_language(self, text: str) -> str:
         """Simple language detection"""
         german_words = ['und', 'der', 'die', 'das', 'ich', 'bei', 'mit', 'für']
         count = sum(1 for word in german_words if word in text.lower())

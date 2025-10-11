@@ -3,10 +3,12 @@ Word Template-based Cover Letter Generator
 Uses .docx templates with placeholders for easy customization
 """
 
+
 from docx import Document
 from datetime import datetime
 import os
 import re
+from typing import Dict, Any, Optional
 
 
 class WordCoverLetterGenerator:
@@ -14,7 +16,7 @@ class WordCoverLetterGenerator:
     Generates cover letters from Word templates
     """
     
-    def __init__(self, template_path_de='data/template_de.docx', template_path_en='data/template_en.docx'):
+    def __init__(self, template_path_de: str = 'data/template_de.docx', template_path_en: str = 'data/template_en.docx') -> None:
         self.template_de = template_path_de
         self.template_en = template_path_en
         
@@ -28,7 +30,13 @@ class WordCoverLetterGenerator:
             'linkedin': 'www.linkedin.com/in/worldapprentice'
         }
     
-    def generate_from_template(self, cover_letter_text, job_data, output_path, language='german'):
+    def generate_from_template(
+        self,
+        cover_letter_text: str,
+        job_data: Dict[str, Any],
+        output_path: str,
+        language: str = 'german'
+    ) -> str:
         """
         Generate cover letter from Word template
         
@@ -100,7 +108,7 @@ class WordCoverLetterGenerator:
         
         return output_path
     
-    def _replace_in_paragraph(self, paragraph, replacements):
+    def _replace_in_paragraph(self, paragraph, replacements: Dict[str, Any]) -> None:
         """Replace placeholders in a paragraph while preserving formatting"""
         
         # First try: simple replacement within runs
@@ -119,7 +127,7 @@ class WordCoverLetterGenerator:
                     # Placeholder is split - need special handling
                     self._replace_split_placeholder(paragraph, placeholder, str(value))
     
-    def _replace_split_placeholder(self, paragraph, placeholder, value):
+    def _replace_split_placeholder(self, paragraph, placeholder: str, value: str) -> None:
         """Handle placeholders that are split across multiple runs"""
         
         # Build the full text with run boundaries marked
@@ -176,7 +184,13 @@ class WordCoverLetterGenerator:
                 after = run.text[overlap_end:]
                 run.text = before + after
     
-    def _generate_basic_docx(self, cover_letter_text, job_data, output_path, language):
+    def _generate_basic_docx(
+        self,
+        cover_letter_text: str,
+        job_data: Dict[str, Any],
+        output_path: str,
+        language: str
+    ) -> str:
         """
         Generate a basic Word document without template
         Fallback if template doesn't exist
@@ -285,7 +299,7 @@ class WordCoverLetterGenerator:
         
         return output_path
     
-    def convert_to_pdf(self, docx_path, pdf_path=None):
+    def convert_to_pdf(self, docx_path: str, pdf_path: Optional[str] = None) -> Optional[str]:
         """
         Convert .docx to PDF
         Note: Requires Microsoft Word to be installed OR LibreOffice
