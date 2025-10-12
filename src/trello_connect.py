@@ -7,6 +7,7 @@ Credentials/IDs are read from config/.env (with hardcoded fallbacks for dev).
 
 import os
 import requests
+from typing import Callable
 try:
     from .utils.logging import get_logger
 except ImportError:
@@ -18,14 +19,16 @@ from datetime import datetime
 from pathlib import Path
 try:
     from .utils.env import load_env, get_str
+    from .utils.http import request_with_retries
 except ImportError:
     import sys
     import os
     sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
     from utils.env import load_env, get_str
+    from utils.http import request_with_retries
 
 class TrelloConnect:
-    def __init__(self) -> None:
+    def __init__(self, requester: Callable[..., requests.Response] | None = None) -> None:
         self.logger = get_logger(__name__)
         load_env()
         self.api_key = get_str('TRELLO_KEY', default='your-trello-key')
@@ -54,6 +57,10 @@ class TrelloConnect:
             'onsite': get_str('TRELLO_LABEL_ONSITE', default='your-label-onsite'),
             'interesting': get_str('TRELLO_LABEL_INTERESTING', default='your-label-interesting'),
         }
+        # Injectable requester to ease testing; defaults to utils.http.request_with_retries
+        self.requester: Callable[..., requests.Response] = requester or (
+            lambda method, url, **kwargs: request_with_retries(method, url, **kwargs)
+        )
 
     def create_card_from_job_data(self, job_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """Creates a Trello card from normalized job_data dict."""
@@ -67,26 +74,29 @@ class TrelloConnect:
             'desc': description,
             'pos': 'top',
         }
-        # Use requests.post directly to keep tests' monkeypatching behavior,
-        # but implement a small retry loop for transient errors.
-        retries = 2
-        backoff = 0.5
-        retry_on = (429, 500, 502, 503, 504)
-        for attempt in range(retries + 1):
-            response = requests.post(create_url, params=params)
-            if response.status_code < 400:
-                return response.json()
-            if response.status_code not in retry_on or attempt == retries:
-                # Keep logging for developers and also print a short line for tests (stdout capture)
+        # Perform request via centralized retry helper; handle both error responses and exceptions.
+        try:
+            response = self.requester('POST', create_url, params=params)
+            # Some injected requesters (tests) may return non-2xx without raising
+            if getattr(response, 'status_code', 200) >= 400:
+                status = response.status_code
                 self.logger.error(
                     "Trello API error creating card (status %s): %s",
-                    response.status_code,
-                    response.text[:300],
+                    status,
+                    getattr(response, 'text', '')[:300],
                 )
-                print(f"Trello API error creating card (status {response.status_code})")
+                print(f"Trello API error creating card (status {status})")
                 return None
-            import time
-            time.sleep(backoff * (2 ** attempt))
+            return response.json()
+        except requests.HTTPError as e:
+            status = getattr(getattr(e, 'response', None), 'status_code', 'unknown')
+            self.logger.error("Trello API error creating card (status %s): %s", status, str(e)[:300])
+            print(f"Trello API error creating card (status {status})")
+            return None
+        except requests.RequestException as e:
+            self.logger.error("Trello request exception: %s", e)
+            print("Trello API error creating card (status unknown)")
+            return None
 
     def _build_card_description(self, job_data: Dict[str, Any]) -> str:
         lines = [

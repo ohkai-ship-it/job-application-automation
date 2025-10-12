@@ -12,6 +12,7 @@ sys.path.append(os.path.dirname(__file__))
 from main import process_job_posting
 from utils.env import load_env, get_str, validate_env
 from utils.logging import get_logger
+from utils.error_reporting import report_error
 import threading
 import json
 from datetime import datetime
@@ -44,6 +45,24 @@ DATA_DIR = Path(get_str('DATA_DIR', 'data'))
 
 # Store processing status
 processing_status = {}
+
+
+@app.errorhandler(Exception)
+def handle_exception(e: Exception):
+    """Global error handler for Flask app returning JSON and recording error."""
+    try:
+        report_error(
+            "Unhandled exception in Flask app",
+            exc=e,
+            context={
+                "path": getattr(request, 'path', None),
+                "method": getattr(request, 'method', None),
+            },
+            severity="error",
+        )
+    finally:
+        logger.exception("Unhandled exception: %s", e)
+    return jsonify({"error": str(e)}), 500
 
 @app.route('/')
 def index() -> str:
@@ -154,6 +173,55 @@ def history() -> Response:
         })
     
     return jsonify({'jobs': jobs})
+
+
+@app.get('/errors')
+def list_errors() -> Response:
+    """List recent error reports from output/errors.
+
+    Query params:
+      - limit: int (default 20, max 200)
+    """
+    try:
+        limit_str = request.args.get('limit', '20')
+        try:
+            limit = max(1, min(200, int(limit_str)))
+        except ValueError:
+            limit = 20
+
+        errors_dir = OUTPUT_DIR / 'errors'
+        if not errors_dir.exists():
+            return jsonify({'errors': []})
+
+        # Load and sort by timestamp in JSON (fallback to filename timestamp or mtime)
+        items = []
+        for p in errors_dir.glob('error_*.json'):
+            try:
+                raw = p.read_text('utf-8')
+                data = json.loads(raw)
+                ts = data.get('timestamp')
+                if not ts:
+                    name = p.name
+                    if name.startswith('error_') and name.endswith('.json'):
+                        ts = name[len('error_'):-len('.json')]
+                items.append((ts or '', p.stat().st_mtime, data, p))
+            except Exception:
+                continue
+
+        items.sort(key=lambda t: (t[0], t[1]), reverse=True)
+        results = []
+        for ts, _mtime, data, p in items[:limit]:
+            results.append({
+                'id': data.get('id'),
+                'timestamp': data.get('timestamp') or ts,
+                'severity': data.get('severity'),
+                'message': data.get('message'),
+                'file': str(p.relative_to(OUTPUT_DIR)) if p.exists() else str(p),
+            })
+        return jsonify({'errors': results})
+    except Exception as e:
+        # Let global handler capture details; return generic response
+        raise e
 
 if __name__ == '__main__':
     # Ensure required directories exist

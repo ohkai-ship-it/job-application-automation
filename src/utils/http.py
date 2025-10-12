@@ -45,6 +45,12 @@ def request_with_retries(
             else:
                 logger.warning("HTTP %s %s returned %s; retrying (attempt %s/%s)", method, url, resp.status_code, attempt + 1, retries)
         except requests.RequestException as e:
+            # If this is an HTTPError with a non-retryable status, don't retry
+            if isinstance(e, requests.HTTPError):
+                status = getattr(getattr(e, 'response', None), 'status_code', None)
+                if status is not None and status not in retry_on:
+                    logger.error("HTTP %s %s non-retryable error %s: %s", method, url, status, e)
+                    raise
             last_exc = e
             if attempt == retries:
                 logger.exception("HTTP %s %s failed after retries: %s", method, url, e)

@@ -142,3 +142,53 @@ def test_generate_cover_letter_word_count_enforced(monkeypatch):
             'company_name': 'Acme'
         }, target_language='english')
     assert 'length out of bounds' in str(exc.value)
+
+
+def test_generate_cover_letter_raises_when_cv_missing():
+    ai = CoverLetterGenerator()
+    # Ensure no CV available for english
+    ai.cv_en = None
+    ai.cv_de = "dummy cv text"  # keep german available to ensure language branch selection matters
+
+    with pytest.raises(AIGenerationError) as exc:
+        ai.generate_cover_letter({
+            'job_title': 'Engineer',
+            'job_description': 'This description is in English and should select english language.',
+            'company_name': 'Acme'
+        }, target_language='english')
+    assert 'CV not available' in str(exc.value)
+
+
+def test_generate_cover_letter_raises_when_client_missing():
+    ai = CoverLetterGenerator()
+    # Provide CV so it reaches client check
+    ai.cv_en = "dummy cv text " * 50
+    ai.cv_de = "dummy cv text " * 50
+    # Simulate missing client
+    ai.client = None
+
+    with pytest.raises(AIGenerationError) as exc:
+        ai.generate_cover_letter({
+            'job_title': 'Engineer',
+            'job_description': 'We do things',
+            'company_name': 'Acme'
+        }, target_language='english')
+    assert 'client not available' in str(exc.value)
+
+
+def test_save_cover_letter_writes_file(tmp_path):
+    ai = CoverLetterGenerator()
+    text = "Hello world"
+    out_file = tmp_path / 'out.txt'
+    path = ai.save_cover_letter(text, {'company_name': 'Acme'}, filename=str(out_file))
+    assert path == str(out_file)
+    with open(path, 'r', encoding='utf-8') as f:
+        assert f.read() == text
+
+
+def test_get_system_prompt_language_variants():
+    ai = CoverLetterGenerator()
+    de_prompt = ai._get_system_prompt('german', 'senior')
+    en_prompt = ai._get_system_prompt('english', 'junior')
+    assert 'deutsche Bewerbungsanschreiben' in de_prompt
+    assert 'English cover letters' in en_prompt

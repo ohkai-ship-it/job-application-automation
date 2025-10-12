@@ -30,18 +30,15 @@ def sample_job_data() -> Dict[str, Any]:
 def test_create_card_from_job_data_success(monkeypatch: pytest.MonkeyPatch):
     calls: dict[str, Any] = {}
 
-    def fake_post(url: str, params: Dict[str, Any]):  # type: ignore[override]
+    def fake_requester(method: str, url: str, **kwargs: Any):
+        # kwargs may include params/json/data
         calls['url'] = url
-        calls['params'] = params
+        calls['params'] = kwargs.get('params', {})
         # Simulate Trello success payload
         return DummyResponse(200, payload={'id': 'card123', 'shortUrl': 'https://trello.com/c/abc123'})
 
-    # Patch requests.post
-    import requests  # local import so monkeypatch works in test environment
-    monkeypatch.setattr(requests, 'post', fake_post)
-
     # Execute
-    tc = TrelloConnect()
+    tc = TrelloConnect(requester=fake_requester)
     result = tc.create_card_from_job_data(sample_job_data())
 
     # Assert
@@ -57,13 +54,10 @@ def test_create_card_from_job_data_success(monkeypatch: pytest.MonkeyPatch):
 
 
 def test_create_card_from_job_data_failure(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture):
-    def fake_post(url: str, params: Dict[str, Any]):  # type: ignore[override]
+    def fake_requester(method: str, url: str, **kwargs: Any):
         return DummyResponse(401, text='unauthorized')
 
-    import requests
-    monkeypatch.setattr(requests, 'post', fake_post)
-
-    tc = TrelloConnect()
+    tc = TrelloConnect(requester=fake_requester)
     result = tc.create_card_from_job_data(sample_job_data())
 
     # Should return None on failure

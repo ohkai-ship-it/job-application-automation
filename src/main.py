@@ -14,6 +14,7 @@ from cover_letter import CoverLetterGenerator
 from docx_generator import WordCoverLetterGenerator
 from utils.env import load_env, get_str, validate_env
 from utils.logging import get_logger
+from utils.error_reporting import report_error
 import json
 from datetime import datetime
 
@@ -68,6 +69,12 @@ def process_job_posting(
     
     if not job_data:
         logger.error("Failed to scrape job posting!")
+        # Record structured error for diagnostics
+        report_error(
+            "Scrape returned no data",
+            context={"url": url},
+            severity="error",
+        )
         return {
             'status': 'failed',
             'step': 'scraping',
@@ -156,6 +163,16 @@ def process_job_posting(
             
         except Exception as e:
             logger.warning("Cover letter generation failed: %s", e)
+            report_error(
+                "Cover letter generation failed",
+                exc=e,
+                context={
+                    "company": job_data.get('company_name'),
+                    "title": job_data.get('job_title'),
+                    "url": job_data.get('source_url'),
+                },
+                severity="error",
+            )
             logger.info("Continuing without cover letter...")
             import traceback
             logger.debug("Traceback:")
