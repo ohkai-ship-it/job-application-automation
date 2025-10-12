@@ -2,6 +2,11 @@
 
 ## In Progress
 
+### Helper Scripts Audit
+- [ ] Audit remaining helper scripts for reuse vs. diagnostics !!!
+    - [ ] Identify overlap with utils modules
+    - [ ] Refactor low-risk helpers to call utils
+    - [ ] Add short README notes for purely diagnostic scripts
 
 ### Environment Variable Cleanup
 - [x] Create central config module
@@ -36,22 +41,46 @@
 - [ ] Add tests for config.py module
 - [ ] Add tests for scraper.py (0% → 80%)
 - [x] Add tests for trello_connect.py (basic request payload tests)
-- [ ] Add tests for main.py (0% → 70%)
-- [ ] Add tests for app.py (0% → 70%)
+- [x] Add tests for main.py (integration via process_job_posting)
+- [x] Add tests for app.py (route tests for /, /process, /status, /download)
 - [ ] Improve cover_letter_ai.py coverage (47% → 80%)
+- [ ] Improve cover_letter.py coverage (47% → 80%)
 - [ ] Improve docx_generator.py coverage (26% → 80%)
- - [x] Add unit tests for utils.html (JSON-LD extraction, keyword search)
- - [x] Add unit tests for utils.trello (mask_secret, get_auth_params)
- - [x] Add unit tests for scraper utilities (clean_job_title, split_address)
- - [x] Integration test for process_job_posting (mock network/Trello; use saved HTML fixture)
- - [x] Flask route tests: /process, /status/<job_id>, /download/<path>
- - [ ] DOCX/PDF fallback tests (docx2pdf fallback path, pdf_generator minimal generation)
- - [ ] Cover letter length checks (prompt word-count enforcement)
+- [x] Add unit tests for utils.html (JSON-LD extraction, keyword search)
+- [x] Add unit tests for utils.trello (mask_secret, get_auth_params)
+- [x] Add unit tests for scraper utilities (clean_job_title, split_address)
+- [x] Integration test for process_job_posting (mock network/Trello; use saved HTML fixture)
+- [x] Flask route tests: /process, /status/<job_id>, /download/<path>
+- [ ] DOCX/PDF fallback tests (docx2pdf fallback path, pdf_generator minimal generation)  !!!
+- [x] Cover letter length checks (prompt word-count enforcement)  !!!
 
 ### Error Handling & Logging
-- [ ] Add proper error handling for API calls
-- [ ] Implement retry mechanisms
-- [ ] Replace print statements with logging
+- [~] Add proper error handling for API calls
+    - [x] TrelloConnect: return None and log on non-retryable errors; include short stdout note for tests
+    - [~] Extend to scraper, cover letter, and document generators
+        - Scraper (src/scraper.py)
+            - [x] Wrap network calls with utils/http.request_with_retries; handle timeouts/connection errors
+            - [x] On non-200 responses (403/404/5xx), raise ScraperError with URL and status; log details
+            - [x] Avoid prints; return None or a minimal safe payload upstream; document behavior
+            - [x] Tests: network error, 404, malformed HTML path
+        - Cover letter (src/cover_letter.py)
+            - [x] Catch OpenAI API exceptions (timeouts/quota); raise AIGenerationError; log context (no secrets)
+            - [x] Enforce 180–240 words; if violation, log warning and raise AIGenerationError
+            - [x] Tests: API exception path; word-count enforcement failure
+        - Document generators (src/docx_generator.py, src/pdf_generator.py)
+            - [x] Guard missing templates and bad placeholders; raise DocumentError; log actionable message
+            - [x] PDF: handle missing docx2pdf on non-Windows; ensure graceful fallback messaging
+            - [x] Tests: template missing, docx2pdf absent, conversion error fallback
+- [x] Implement retry mechanisms
+    - [x] Trello card creation: small retry with backoff on 429/5xx
+    - [ ] Consider centralizing retries via utils/http.py and adjust tests accordingly
+        - [ ] Scope decision: Scraper already uses utils/http.request_with_retries; apply to TrelloConnect only
+        - [ ] Refactor TrelloConnect to call utils/http.request_with_retries (inject requester/session for tests)
+        - [ ] Update unit tests to patch the injected requester instead of requests.post; keep stdout hook
+        - [ ] Add targeted tests for utils/http backoff on 429/5xx and non-retryable handling
+- [x] Replace print statements with logging
+    - [x] Introduced utils/logging.get_logger and applied across core modules
+    - [x] Removed remaining prints in core modules; kept a single Trello stdout line as an intentional test hook
 - [ ] Add error reporting
 
 ### Documentation Updates
@@ -59,8 +88,10 @@
 - [ ] Add API documentation
 - [ ] Add contribution guidelines
 - [ ] Add development setup guide
- - [ ] Document helper scripts and their diagnostic purpose
+- [ ] Document helper scripts and their diagnostic purpose
 
 ## Completed
 
-- [x] Run tests and fix fallout (40 tests passed)
+- [x] Run tests and fix fallout (46 tests passed)
+- [x] TrelloConnect: kept direct requests.post for test monkeypatch compatibility and added a retry loop
+- [x] Migrated core modules from print to logging; retained Trello stdout hook for unit test; full suite green (41/41)

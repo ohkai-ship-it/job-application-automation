@@ -7,6 +7,7 @@ import pytest
 from src.cover_letter import CoverLetterGenerator
 from src.utils.env import load_env, validate_env
 from openai import OpenAIError
+from src.utils.errors import AIGenerationError
 
 @pytest.fixture(autouse=True)
 def mock_env():
@@ -86,3 +87,58 @@ def test_detect_seniority():
     
     for title, desc, expected in test_cases:
         assert ai.detect_seniority(title, desc) == expected
+
+
+def test_generate_cover_letter_handles_openai_exception(monkeypatch):
+    ai = CoverLetterGenerator()
+    # Provide dummy CV text so the flow reaches the OpenAI call
+    ai.cv_en = "dummy cv text " * 50
+    ai.cv_de = "dummy cv text " * 50
+
+    class DummyClient:
+        class chat:
+            class completions:
+                @staticmethod
+                def create(**kwargs):
+                    raise RuntimeError("quota exceeded")
+
+    ai.client = DummyClient()
+
+    with pytest.raises(AIGenerationError) as exc:
+        ai.generate_cover_letter({
+            'job_title': 'Engineer',
+            'job_description': 'We do things',
+            'company_name': 'Acme'
+        }, target_language='english')
+    assert 'OpenAI API error' in str(exc.value)
+
+
+def test_generate_cover_letter_word_count_enforced(monkeypatch):
+    ai = CoverLetterGenerator()
+    # Provide dummy CV text so the flow reaches the response validation
+    ai.cv_en = "dummy cv text " * 50
+    ai.cv_de = "dummy cv text " * 50
+
+    class DummyResponse:
+        def __init__(self, content: str):
+            self.choices = [types.SimpleNamespace(message=types.SimpleNamespace(content=content))]
+
+    import types
+
+    class DummyClient:
+        class chat:
+            class completions:
+                @staticmethod
+                def create(**kwargs):
+                    # Return a too-short letter (<180 words)
+                    return DummyResponse("too short")
+
+    ai.client = DummyClient()
+
+    with pytest.raises(AIGenerationError) as exc:
+        ai.generate_cover_letter({
+            'job_title': 'Engineer',
+            'job_description': 'We do things',
+            'company_name': 'Acme'
+        }, target_language='english')
+    assert 'length out of bounds' in str(exc.value)

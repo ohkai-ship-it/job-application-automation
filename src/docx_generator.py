@@ -9,6 +9,14 @@ from datetime import datetime
 import os
 import re
 from typing import Dict, Any, Optional
+try:
+    from .utils.logging import get_logger
+    from .utils.errors import DocumentError
+except Exception:
+    import sys
+    sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+    from utils.logging import get_logger
+    from utils.errors import DocumentError
 
 
 class WordCoverLetterGenerator:
@@ -49,29 +57,30 @@ class WordCoverLetterGenerator:
         Returns:
             str: Path to generated document
         """
-        
-        print(f"\n--- Generating Word Document ---")
-        print(f"Language: {language}")
-        print(f"Output: {output_path}")
-        
+        logger = get_logger(__name__)
+        logger.info("Generating Word Document | lang=%s | out=%s", language, output_path)
+
         # Select template
         template_path = self.template_de if language == 'german' else self.template_en
-        
+
         # Check if template exists
         if not os.path.exists(template_path):
-            print(f"⚠ Template not found: {template_path}")
-            print(f"Creating a basic template...")
+            logger.warning("Template not found: %s. Falling back to basic generation.", template_path)
             return self._generate_basic_docx(cover_letter_text, job_data, output_path, language)
-        
+
         # Load template
-        doc = Document(template_path)
-        
+        try:
+            doc = Document(template_path)
+        except Exception as e:
+            logger.error("Failed to load template %s: %s", template_path, e)
+            raise DocumentError(f"Failed to load template: {template_path}") from e
+
         # Prepare replacement data
         today = datetime.now().strftime('%d.%m.%Y')
-        
-        # Convert paragraph breaks to Word line breaks
-        cover_letter_formatted = cover_letter_text.replace('\n\n', '\n\n')  # Keep double newlines
-        
+
+        # Convert paragraph breaks to Word line breaks (preserve double newlines)
+        cover_letter_formatted = cover_letter_text.replace('\n\n', '\n\n')
+
         replacements = {
             '{{SENDER_NAME}}': self.sender['name'],
             '{{SENDER_PHONE}}': self.sender['phone'],
@@ -88,24 +97,27 @@ class WordCoverLetterGenerator:
             '{{DATE}}': today,
             '{{COVER_LETTER_BODY}}': cover_letter_formatted,
         }
-        
+
         # Replace placeholders in all paragraphs
         for paragraph in doc.paragraphs:
             self._replace_in_paragraph(paragraph, replacements)
-        
+
         # Replace in tables
         for table in doc.tables:
             for row in table.rows:
                 for cell in row.cells:
                     for paragraph in cell.paragraphs:
                         self._replace_in_paragraph(paragraph, replacements)
-        
+
         # Save document
-        os.makedirs(os.path.dirname(output_path), exist_ok=True)
-        doc.save(output_path)
-        
-        print(f"✓ Word document generated: {output_path}")
-        
+        try:
+            os.makedirs(os.path.dirname(output_path), exist_ok=True)
+            doc.save(output_path)
+        except Exception as e:
+            logger.error("Failed to save DOCX %s: %s", output_path, e)
+            raise DocumentError(f"Failed to save DOCX: {output_path}") from e
+
+        logger.info("Word document generated: %s", output_path)
         return output_path
     
     def _replace_in_paragraph(self, paragraph, replacements: Dict[str, Any]) -> None:
@@ -195,11 +207,11 @@ class WordCoverLetterGenerator:
         Generate a basic Word document without template
         Fallback if template doesn't exist
         """
-        
-        print("Creating basic Word document (no template)...")
-        
+        logger = get_logger(__name__)
+        logger.info("Creating basic Word document (no template)...")
+
         doc = Document()
-        
+
         # Set narrow margins (2.5cm)
         sections = doc.sections
         for section in sections:
@@ -207,11 +219,11 @@ class WordCoverLetterGenerator:
             section.bottom_margin = 914400
             section.left_margin = 914400
             section.right_margin = 914400
-        
+
         today = datetime.now().strftime('%d.%m.%Y')
         company_name = job_data.get('company_name', 'Company')
         job_title = job_data.get('job_title', 'Position')
-        
+
         # Add sender info (right-aligned)
         p = doc.add_paragraph()
         p.alignment = 2  # Right align
@@ -221,9 +233,9 @@ class WordCoverLetterGenerator:
         p.add_run(f"{self.sender['address_line1']}\n")
         p.add_run(f"{self.sender['address_line2']}\n")
         p.add_run(f"{self.sender['linkedin']}")
-        
+
         doc.add_paragraph()  # Spacer
-        
+
         # Company address (left-aligned)
         p = doc.add_paragraph()
         p.add_run(f"{company_name}\n").bold = True
@@ -231,72 +243,59 @@ class WordCoverLetterGenerator:
             p.add_run(f"{job_data['company_address']}\n")
         if job_data.get('location'):
             p.add_run(f"{job_data['location']}")
-        
+
         doc.add_paragraph()  # Spacer
-        
+
         # Date (right-aligned)
         p = doc.add_paragraph(today)
         p.alignment = 2  # Right align
-        
+
         doc.add_paragraph()  # Spacer
-        
+
         # Subject
-        if language == 'german':
-            subject = f"Bewerbung als {job_title}"
-        else:
-            subject = f"Application for {job_title}"
-        
+        subject = f"Bewerbung als {job_title}" if language == 'german' else f"Application for {job_title}"
         p = doc.add_paragraph()
         p.add_run(subject).bold = True
-        
+
         doc.add_paragraph()  # Spacer
-        
+
         # Greeting
-        if language == 'german':
-            greeting = f"Hallo liebes {company_name}-Team,"
-        else:
-            greeting = f"Dear Hiring Team,"
-        
+        greeting = f"Hallo liebes {company_name}-Team," if language == 'german' else "Dear Hiring Team,"
         doc.add_paragraph(greeting)
-        
+
         # Cover letter body
         paragraphs = cover_letter_text.split('\n\n')
         for para_text in paragraphs:
             if para_text.strip():
                 doc.add_paragraph(para_text.strip())
-        
+
         doc.add_paragraph()  # Spacer
-        
+
         # Closing
-        if language == 'german':
-            closing = "Mit freundlichen Grüßen,"
-        else:
-            closing = "Best regards,"
-        
+        closing = "Mit freundlichen Grüßen," if language == 'german' else "Best regards,"
         doc.add_paragraph(closing)
         doc.add_paragraph()  # Space for signature
-        
+
         # Name
         p = doc.add_paragraph()
         p.add_run(self.sender['name']).bold = True
-        
+
         doc.add_paragraph()  # Spacer
-        
+
         # Attachments
-        if language == 'german':
-            attachments = "Anlagen: Deckblatt · Lebenslauf · Zeugnisse"
-        else:
-            attachments = "Attachments: Cover Page · Resume · References"
-        
+        attachments = "Anlagen: Deckblatt · Lebenslauf · Zeugnisse" if language == 'german' else "Attachments: Cover Page · Resume · References"
         p = doc.add_paragraph(attachments)
         p.runs[0].font.italic = True
-        
+
         # Save
-        os.makedirs(os.path.dirname(output_path), exist_ok=True)
-        doc.save(output_path)
-        
-        print(f"✓ Basic Word document created: {output_path}")
-        
+        try:
+            os.makedirs(os.path.dirname(output_path), exist_ok=True)
+            doc.save(output_path)
+        except Exception as e:
+            logger.error("Failed to save basic DOCX %s: %s", output_path, e)
+            raise DocumentError(f"Failed to save DOCX: {output_path}") from e
+
+        logger.info("Basic Word document created: %s", output_path)
         return output_path
     
     def convert_to_pdf(self, docx_path: str, pdf_path: Optional[str] = None) -> Optional[str]:
@@ -319,15 +318,18 @@ class WordCoverLetterGenerator:
             # Try using docx2pdf (works on Windows with Word installed)
             import docx2pdf
             docx2pdf.convert(docx_path, pdf_path)
-            print(f"✓ Converted to PDF: {pdf_path}")
+            logger = get_logger(__name__)
+            logger.info("Converted to PDF: %s", pdf_path)
             return pdf_path
         except ImportError:
-            print("⚠ docx2pdf not installed. Install with: pip install docx2pdf")
-            print("⚠ Or manually export to PDF from Word")
+            logger = get_logger(__name__)
+            logger.warning("docx2pdf not installed. Install with: pip install docx2pdf")
+            logger.warning("Or manually export to PDF from Word")
             return None
         except Exception as e:
-            print(f"⚠ Could not convert to PDF: {e}")
-            print("⚠ You can manually export to PDF from Word")
+            logger = get_logger(__name__)
+            logger.warning("Could not convert to PDF: %s", e)
+            logger.warning("You can manually export to PDF from Word")
             return None
 
 

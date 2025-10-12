@@ -10,10 +10,14 @@ from pathlib import Path
 from typing import Optional, Dict, Any
 try:
     from .utils.env import get_str
+    from .utils.logging import get_logger
+    from .utils.errors import AIGenerationError
 except ImportError:
     import sys
     sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
     from utils.env import get_str
+    from utils.logging import get_logger
+    from utils.errors import AIGenerationError
 try:
     from openai import OpenAI
 except ImportError:
@@ -25,6 +29,7 @@ except ImportError:
 
 class CoverLetterGenerator:
     def __init__(self) -> None:
+        self.logger = get_logger(__name__)
         self.api_key = get_str('OPENAI_API_KEY', default=None)
         if not self.api_key or self.api_key.strip() == '':
             raise ValueError("OPENAI_API_KEY not found in environment")
@@ -42,7 +47,7 @@ class CoverLetterGenerator:
                 text = "".join(page.extract_text() or '' for page in pdf_reader.pages)
                 return text
         except Exception as e:
-            print(f"Error loading CV {filepath}: {e}")
+            self.logger.warning("Error loading CV %s: %s", filepath, e)
             return None
 
     def detect_language(self, job_description: str) -> str:
@@ -66,22 +71,36 @@ class CoverLetterGenerator:
             target_language = self.detect_language(job_description)
         cv_text = self.cv_de if target_language == 'german' else self.cv_en
         if not cv_text:
-            raise ValueError(f"CV not available for language: {target_language}")
+            self.logger.error("CV not available for language: %s", target_language)
+            raise AIGenerationError(f"CV not available for language: {target_language}")
         job_title = job_data.get('job_title', '')
         seniority = self.detect_seniority(job_title, job_description)
         prompt = self._build_prompt(job_data, cv_text, target_language, seniority)
         if not self.client:
-            raise RuntimeError("OpenAI client not available")
-        response = self.client.chat.completions.create(
-            model=self.model,
-            messages=[
-                {"role": "system", "content": self._get_system_prompt(target_language, seniority)},
-                {"role": "user", "content": prompt}
-            ],
-            temperature=0.7,
-            max_tokens=600
-        )
+            self.logger.error("OpenAI client not available")
+            raise AIGenerationError("OpenAI client not available")
+        try:
+            response = self.client.chat.completions.create(
+                model=self.model,
+                messages=[
+                    {"role": "system", "content": self._get_system_prompt(target_language, seniority)},
+                    {"role": "user", "content": prompt}
+                ],
+                temperature=0.7,
+                max_tokens=600
+            )
+        except Exception as e:
+            # Catch and wrap OpenAI client exceptions
+            self.logger.error("OpenAI API error: %s", e)
+            raise AIGenerationError(f"OpenAI API error: {e}") from e
+
         cover_letter = response.choices[0].message.content.strip()
+
+        # Enforce 180–240 words
+        word_count = len(re.findall(r"\b\w+\b", cover_letter))
+        if word_count < 180 or word_count > 240:
+            self.logger.warning("Cover letter word count %s outside 180–240 range", word_count)
+            raise AIGenerationError(f"Cover letter length out of bounds: {word_count} words")
         return cover_letter
 
     def _get_system_prompt(self, language: str, seniority: str) -> str:
@@ -110,5 +129,5 @@ class CoverLetterGenerator:
         os.makedirs(os.path.dirname(filename), exist_ok=True)
         with open(filename, 'w', encoding='utf-8') as f:
             f.write(cover_letter)
-        print(f"✓ Cover letter saved: {filename}")
+        self.logger.info("Cover letter saved: %s", filename)
         return filename

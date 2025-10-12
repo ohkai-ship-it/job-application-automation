@@ -11,22 +11,23 @@ sys.path.append(os.path.dirname(__file__))
 
 from main import process_job_posting
 from utils.env import load_env, get_str, validate_env
+from utils.logging import get_logger
 import threading
 import json
 from datetime import datetime
 
 # Validate environment at startup (allow skipping in tests)
 skip_env = os.getenv('SKIP_ENV_VALIDATION', '0') == '1'
+logger = get_logger(__name__)
 if not skip_env:
     try:
         from utils.env import validate_all_env
         validate_all_env()
     except ValueError as e:
-        print("\n⚠️  Environment Validation Error:")
-        print(str(e))
+        logger.error("Environment Validation Error: %s", str(e))
         sys.exit(1)
     except Exception as e:
-        print(f"\n⚠️  Unexpected error during environment validation: {e}")
+        logger.exception("Unexpected error during environment validation: %s", e)
         sys.exit(1)
 
 # Flask configuration
@@ -160,17 +161,17 @@ if __name__ == '__main__':
     os.makedirs(DATA_DIR, exist_ok=True)
     os.makedirs(OUTPUT_DIR, exist_ok=True)
     
-    print("\n" + "=" * 80)
-    print("JOB APPLICATION AUTOMATION - Web Interface")
-    print("=" * 80)
+    logger.info("%s", "=" * 80)
+    logger.info("JOB APPLICATION AUTOMATION - Web Interface")
+    logger.info("%s", "=" * 80)
     
     host = app.config['HOST']
     port = app.config['PORT']
     debug = app.config['DEBUG']
     
-    print(f"\n🌐 Starting web server...")
-    print(f"📱 Open your browser and go to: http://{host}:{port}")
-    print(f"⚙️  Debug mode: {'enabled' if debug else 'disabled'}")
-    print("⏹️  Press Ctrl+C to stop the server\n")
+    logger.info("Starting web server...")
+    logger.info("Open your browser and go to: http://%s:%s", host, port)
+    logger.info("Debug mode: %s", 'enabled' if debug else 'disabled')
+    logger.info("Press Ctrl+C to stop the server")
     
     app.run(host=host, port=port, debug=debug)

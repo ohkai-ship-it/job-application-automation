@@ -13,21 +13,22 @@ from trello_connect import TrelloConnect
 from cover_letter import CoverLetterGenerator
 from docx_generator import WordCoverLetterGenerator
 from utils.env import load_env, get_str, validate_env
+from utils.logging import get_logger
 import json
 from datetime import datetime
 
 # Validate environment at startup (allow skipping in tests)
 skip_env = os.getenv('SKIP_ENV_VALIDATION', '0') == '1'
+logger = get_logger(__name__)
 if not skip_env:
     try:
         from utils.env import validate_all_env
         validate_all_env()
     except ValueError as e:
-        print("\n⚠️  Environment Validation Error:")
-        print(str(e))
+        logger.error("Environment Validation Error: %s", str(e))
         sys.exit(1)
     except Exception as e:
-        print(f"\n⚠️  Unexpected error during environment validation: {e}")
+        logger.exception("Unexpected error during environment validation: %s", e)
         sys.exit(1)
 
 # Get configured paths
@@ -54,26 +55,26 @@ def process_job_posting(
         dict: Result with status and data
     """
     
-    print("=" * 80)
-    print("JOB APPLICATION AUTOMATION")
-    print("=" * 80)
-    print(f"\nProcessing: {url}\n")
+    logger.info("%s", "=" * 80)
+    logger.info("JOB APPLICATION AUTOMATION")
+    logger.info("%s", "=" * 80)
+    logger.info("Processing: %s", url)
     
     # Step 1: Scrape the job posting
-    print("STEP 1: Scraping job posting...")
-    print("-" * 80)
+    logger.info("STEP 1: Scraping job posting...")
+    logger.info("%s", "-" * 80)
     
     job_data = scrape_stepstone_job(url)
     
     if not job_data:
-        print("\n✗ Failed to scrape job posting!")
+        logger.error("Failed to scrape job posting!")
         return {
             'status': 'failed',
             'step': 'scraping',
             'error': 'Scraper returned no data'
         }
     
-    print(f"\n✓ Successfully scraped job data!")
+    logger.info("Successfully scraped job data!")
     
     # Save scraped data
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
@@ -81,15 +82,15 @@ def process_job_posting(
     save_to_json(job_data, str(filename))
     
     # Step 2: Create Trello card
-    print("\n" + "=" * 80)
-    print("STEP 2: Creating Trello card...")
-    print("-" * 80)
+    logger.info("%s", "=" * 80)
+    logger.info("STEP 2: Creating Trello card...")
+    logger.info("%s", "-" * 80)
     
     trello = TrelloConnect()
     card = trello.create_card_from_job_data(job_data)
     
     if not card:
-        print("\n✗ Failed to create Trello card!")
+        logger.error("Failed to create Trello card!")
         return {
             'status': 'partial',
             'step': 'trello',
@@ -104,9 +105,9 @@ def process_job_posting(
     pdf_file = None
     
     if generate_cover_letter:
-        print("\n" + "=" * 80)
-        print("STEP 3: Generating cover letter...")
-        print("-" * 80)
+        logger.info("%s", "=" * 80)
+        logger.info("STEP 3: Generating cover letter...")
+        logger.info("%s", "-" * 80)
         
         try:
             # Generate AI text
@@ -117,18 +118,18 @@ def process_job_posting(
             language = ai_generator.detect_language(job_data.get('job_description', ''))
             
             # Display preview
-            print("\n--- Cover Letter Preview ---")
+            logger.info("--- Cover Letter Preview ---")
             preview = cover_letter_text[:300] + "..." if len(cover_letter_text) > 300 else cover_letter_text
-            print(preview)
-            print("-" * 80)
+            logger.info("%s", preview)
+            logger.info("%s", "-" * 80)
             
             # Save text version
             cover_letter_file = ai_generator.save_cover_letter(cover_letter_text, job_data)
             
             # Step 4: Generate Word document
-            print("\n" + "=" * 80)
-            print("STEP 4: Creating Word document...")
-            print("-" * 80)
+            logger.info("%s", "=" * 80)
+            logger.info("STEP 4: Creating Word document...")
+            logger.info("%s", "-" * 80)
             
             word_generator = WordCoverLetterGenerator()
             company = job_data.get('company_name', 'Company').replace(' ', '_')
@@ -143,39 +144,40 @@ def process_job_posting(
             
             # Step 5: Convert to PDF (optional)
             if generate_pdf:
-                print("\n" + "=" * 80)
-                print("STEP 5: Converting to PDF...")
-                print("-" * 80)
+                logger.info("%s", "=" * 80)
+                logger.info("STEP 5: Converting to PDF...")
+                logger.info("%s", "-" * 80)
                 
                 pdf_filename = docx_filename.replace('.docx', '.pdf')
                 pdf_file = word_generator.convert_to_pdf(docx_file, pdf_filename)
                 
                 if not pdf_file:
-                    print("⚠ PDF conversion skipped - install with: pip install docx2pdf")
+                    logger.warning("PDF conversion skipped - install with: pip install docx2pdf")
             
         except Exception as e:
-            print(f"\n⚠ Warning: Cover letter generation failed: {e}")
-            print("Continuing without cover letter...")
+            logger.warning("Cover letter generation failed: %s", e)
+            logger.info("Continuing without cover letter...")
             import traceback
-            traceback.print_exc()
+            logger.debug("Traceback:")
+            logger.debug("%s", traceback.format_exc())
     
     # Success!
-    print("\n" + "=" * 80)
-    print("✓ AUTOMATION COMPLETE!")
-    print("=" * 80)
-    
-    print(f"\n📊 Summary:")
-    print(f"  Company: {job_data.get('company_name', 'N/A')}")
-    print(f"  Position: {job_data.get('job_title', 'N/A')}")
-    print(f"  Location: {job_data.get('location', 'N/A')}")
-    print(f"  Trello Card: {card['shortUrl']}")
-    print(f"  Data saved: {filename}")
+    logger.info("%s", "=" * 80)
+    logger.info("AUTOMATION COMPLETE!")
+    logger.info("%s", "=" * 80)
+
+    logger.info("Summary:")
+    logger.info("  Company: %s", job_data.get('company_name', 'N/A'))
+    logger.info("  Position: %s", job_data.get('job_title', 'N/A'))
+    logger.info("  Location: %s", job_data.get('location', 'N/A'))
+    logger.info("  Trello Card: %s", card['shortUrl'])
+    logger.info("  Data saved: %s", filename)
     if cover_letter_file:
-        print(f"  Cover Letter (TXT): {cover_letter_file}")
+        logger.info("  Cover Letter (TXT): %s", cover_letter_file)
     if docx_file:
-        print(f"  Cover Letter (DOCX): {docx_file}")
+        logger.info("  Cover Letter (DOCX): %s", docx_file)
     if pdf_file:
-        print(f"  Cover Letter (PDF): {pdf_file}")
+        logger.info("  Cover Letter (PDF): %s", pdf_file)
     
     return {
         'status': 'success',
@@ -201,14 +203,14 @@ def batch_process_urls(urls: List[str]) -> List[Dict[str, Any]]:
     
     results = []
     
-    print("=" * 80)
-    print(f"BATCH PROCESSING {len(urls)} JOB POSTINGS")
-    print("=" * 80)
+    logger.info("%s", "=" * 80)
+    logger.info("BATCH PROCESSING %s JOB POSTINGS", len(urls))
+    logger.info("%s", "=" * 80)
     
     for i, url in enumerate(urls, 1):
-        print(f"\n\n{'='*80}")
-        print(f"Processing {i}/{len(urls)}")
-        print(f"{'='*80}\n")
+        logger.info("%s", "=" * 80)
+        logger.info("Processing %s/%s", i, len(urls))
+        logger.info("%s", "=" * 80)
         
         result = process_job_posting(url)
         results.append({
@@ -219,23 +221,23 @@ def batch_process_urls(urls: List[str]) -> List[Dict[str, Any]]:
         # Wait between requests (be polite to Stepstone)
         if i < len(urls):
             import time
-            print("\nWaiting 3 seconds before next job...")
+            logger.info("Waiting 3 seconds before next job...")
             time.sleep(3)
     
     # Final summary
-    print("\n\n" + "=" * 80)
-    print("BATCH PROCESSING COMPLETE")
-    print("=" * 80)
+    logger.info("%s", "=" * 80)
+    logger.info("BATCH PROCESSING COMPLETE")
+    logger.info("%s", "=" * 80)
     
     successful = sum(1 for r in results if r['status'] == 'success')
-    print(f"\nResults: {successful}/{len(urls)} successful")
+    logger.info("Results: %s/%s successful", successful, len(urls))
     
     for i, result in enumerate(results, 1):
         status_icon = "✓" if result['status'] == 'success' else "✗"
         company = result.get('job_data', {}).get('company_name', 'Unknown') if 'job_data' in result else 'Unknown'
-        print(f"{i}. {status_icon} {company}")
+        logger.info("%s. %s %s", i, status_icon, company)
         if result['status'] == 'success':
-            print(f"   Card: {result['trello_card']['shortUrl']}")
+            logger.info("   Card: %s", result['trello_card']['shortUrl'])
     
     return results
 
@@ -245,15 +247,15 @@ def interactive_mode() -> None:
     Interactive command-line interface
     """
     
-    print("=" * 80)
-    print("JOB APPLICATION AUTOMATION - Interactive Mode")
-    print("=" * 80)
+    logger.info("%s", "=" * 80)
+    logger.info("JOB APPLICATION AUTOMATION - Interactive Mode")
+    logger.info("%s", "=" * 80)
     
     while True:
-        print("\nOptions:")
-        print("  1. Process single job posting")
-        print("  2. Process multiple job postings")
-        print("  3. Exit")
+        logger.info("Options:")
+        logger.info("  1. Process single job posting")
+        logger.info("  2. Process multiple job postings")
+        logger.info("  3. Exit")
         
         choice = input("\nSelect option (1-3): ").strip()
         
@@ -262,10 +264,10 @@ def interactive_mode() -> None:
             if url:
                 process_job_posting(url)
             else:
-                print("✗ No URL provided!")
+                logger.error("No URL provided!")
         
         elif choice == '2':
-            print("\nEnter Stepstone URLs (one per line, empty line to finish):")
+            logger.info("Enter Stepstone URLs (one per line, empty line to finish):")
             urls = []
             while True:
                 url = input().strip()
@@ -276,14 +278,14 @@ def interactive_mode() -> None:
             if urls:
                 batch_process_urls(urls)
             else:
-                print("✗ No URLs provided!")
+                logger.error("No URLs provided!")
         
         elif choice == '3':
-            print("\nGoodbye!")
+            logger.info("Goodbye!")
             break
         
         else:
-            print("✗ Invalid option!")
+            logger.error("Invalid option!")
 
 
 if __name__ == "__main__":
