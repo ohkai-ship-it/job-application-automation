@@ -82,16 +82,39 @@ This document summarizes the public APIs: Python module contracts and Flask endp
 ### src/cover_letter.py
 - Contract:
   - Input: `job_data: dict`, optional `target_language: str` ("de"|"en")
-  - Output: `text: str` (cover letter, 180–240 words)
+  - Output: `text: str` (cover letter body, 180–240 words)
+  - Side effect: Adds `cover_letter_salutation`, `cover_letter_body`, `cover_letter_valediction` to `job_data`
 - Class:
   - `CoverLetterGenerator()` with methods:
-    - `detect_language(job_data) -> str`
-    - `detect_seniority(job_data) -> str`
-    - `generate_cover_letter(job_data, target_language=None) -> str`
-    - `save_cover_letter(text, job_data, output_dir=None) -> str`
+    - `detect_language(job_data) -> str`: Auto-detect DE/EN from job description word frequency
+    - `detect_seniority(job_data) -> str`: Pattern matching for junior/mid/senior/lead/executive
+    - `detect_german_formality(job_description) -> str`: Analyzes du vs. Sie pronouns; returns 'informal' or 'formal'
+    - `generate_salutation(job_data, language, formality, seniority) -> str`: Context-aware greeting
+      - Uses contact person name if available (detects gender from Herr/Frau)
+      - Falls back to generic team greeting
+      - Matches tone to seniority level
+    - `generate_valediction(language, formality, seniority) -> str`: Appropriate closing
+      - German formal: "Mit freundlichen Grüßen"
+      - German informal: "Viele Grüße" (junior/mid) or "Beste Grüße" (senior+)
+      - English: "Sincerely" (exec/senior formal) or "Best" (informal) or "Best regards" (default)
+    - `generate_cover_letter(job_data, target_language=None) -> str`: Orchestrates full generation
+      1. Detects language and seniority
+      2. Detects formality (for German)
+      3. Generates salutation
+      4. Calls OpenAI for body text (with formality instruction for German)
+      5. Generates valediction
+      6. Stores all three parts in `job_data` dict
+      7. Returns body text (for backward compatibility)
+    - `save_cover_letter(text, job_data, output_dir=None) -> str`: Saves body to TXT file
+- Three-Part Structure:
+  - `job_data['cover_letter_salutation']`: Personalized or generic greeting
+  - `job_data['cover_letter_body']`: AI-generated 180–240 word body
+  - `job_data['cover_letter_valediction']`: Tone-matched closing
 - Notes:
-  - Enforces 180–240 words; raises `AIGenerationError` on violations.
-  - Loads CV PDFs from `data/`.
+  - Enforces 180–240 words on body text; raises `AIGenerationError` on violations
+  - Loads CV PDFs from `data/cv_de.pdf` and `data/cv_en.pdf`
+  - German formality detection uses pronoun counting (weights capitalized "Sie" heavily)
+  - AI prompt includes formality instructions for German: "Verwende die Du-Form" or "Verwende die Sie-Form"
 
 ### src/docx_generator.py
 - Contract:
@@ -100,9 +123,15 @@ This document summarizes the public APIs: Python module contracts and Flask endp
 - Functions:
   - `generate_from_template(...) -> str`
   - `convert_to_pdf(docx_path) -> str | None`
+- Template Placeholders:
+  - `{{COVER_LETTER_BODY}}`: Main cover letter text (AI-generated)
+  - `{{COVER_LETTER_SALUTATION}}`: Personalized/generic greeting
+  - `{{COVER_LETTER_VALEDICTION}}`: Tone-matched closing
+  - Plus other standard placeholders: `{{COMPANY_NAME}}`, `{{JOB_TITLE}}`, etc.
 - Notes:
-  - Supports placeholder replacement across runs and in tables.
-  - Falls back to a basic layout when template missing.
+  - Supports placeholder replacement across runs and in tables
+  - Falls back to a basic layout when template missing
+  - Templates expected at `data/template_de.docx` and `data/template_en.docx`
 
 ### src/pdf_generator.py
 - Contract:
@@ -138,4 +167,8 @@ This document summarizes the public APIs: Python module contracts and Flask endp
   - `publication_date: str | None` (ISO 8601 format)
   - `career_page_link: str | None`
   - `direct_apply_link: str | None`
+  - `contact_person: dict | None` with key `name: str` (contact person's full name)
+  - `cover_letter_salutation: str | None` (added by `CoverLetterGenerator.generate_cover_letter`)
+  - `cover_letter_body: str | None` (added by `CoverLetterGenerator.generate_cover_letter`)
+  - `cover_letter_valediction: str | None` (added by `CoverLetterGenerator.generate_cover_letter`)
   - plus other optional fields for references/metadata.

@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### Added
+- Context-aware cover letter salutations and valedictions:
+  - Automatic German formality detection (du vs. Sie) via pronoun counting
+  - Personalized greetings using contact names when available
+  - Generic team greetings as fallback
+  - Tone matching to seniority level (junior/mid/senior/executive)
+  - AI prompt includes formality instructions for German cover letters
+  - Three-part structure: salutation, body, valediction stored in job_data
+  - DOCX template placeholders: {{COVER_LETTER_SALUTATION}}, {{COVER_LETTER_VALEDICTION}}
+  - 25 new unit tests for formality detection, salutation/valediction generation
+
 ## [0.1.0] - 2025-10-12
 
 Milestone: Core workflow stabilized, diagnostics added, and documentation completed.

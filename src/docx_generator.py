@@ -95,7 +95,9 @@ class WordCoverLetterGenerator:
             '{{COMPANY_LOCATION}}': job_data.get('location', ''),
             '{{JOB_TITLE}}': job_data.get('job_title_clean') or job_data.get('job_title', 'Position'),
             '{{DATE}}': today,
+            '{{COVER_LETTER_SALUTATION}}': job_data.get('cover_letter_salutation', ''),
             '{{COVER_LETTER_BODY}}': cover_letter_formatted,
+            '{{COVER_LETTER_VALEDICTION}}': job_data.get('cover_letter_valediction', ''),
         }
 
         # Replace placeholders in all paragraphs
