@@ -29,11 +29,18 @@ def sample_job_data() -> Dict[str, Any]:
 
 def test_create_card_from_job_data_success(monkeypatch: pytest.MonkeyPatch):
     calls: dict[str, Any] = {}
+    card_creation_call = {}
 
     def fake_requester(method: str, url: str, **kwargs: Any):
         # kwargs may include params/json/data
         calls['url'] = url
         calls['params'] = kwargs.get('params', {})
+        
+        # Capture the card creation call specifically
+        if url.endswith('/cards'):
+            card_creation_call['url'] = url
+            card_creation_call['params'] = kwargs.get('params', {})
+        
         # Simulate Trello success payload
         return DummyResponse(200, payload={'id': 'card123', 'shortUrl': 'https://trello.com/c/abc123'})
 
@@ -43,14 +50,16 @@ def test_create_card_from_job_data_success(monkeypatch: pytest.MonkeyPatch):
 
     # Assert
     assert result is not None
-    assert calls['url'].endswith('/cards')
-    assert calls['params']['idList'] == tc.leads_list_id
-    assert calls['params']['name'] == 'Acme Inc. - Senior Engineer'
-    assert 'desc' in calls['params'] and isinstance(calls['params']['desc'], str)
-    assert calls['params']['pos'] == 'top'
+    # Check the card creation call (not the last call which might be custom field setting)
+    assert card_creation_call['url'].endswith('/cards')
+    assert card_creation_call['params']['idList'] == tc.leads_list_id
+    # New format: "[Company] Title (Location)"
+    assert card_creation_call['params']['name'] == '[Acme Inc.] Senior Engineer (Remote)'
+    assert 'desc' in card_creation_call['params'] and isinstance(card_creation_call['params']['desc'], str)
+    assert card_creation_call['params']['pos'] == 'top'
     # Auth params included
-    assert calls['params']['key'] == tc.api_key
-    assert calls['params']['token'] == tc.token
+    assert card_creation_call['params']['key'] == tc.api_key
+    assert card_creation_call['params']['token'] == tc.token
 
 
 def test_create_card_from_job_data_failure(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture):
@@ -65,4 +74,4 @@ def test_create_card_from_job_data_failure(monkeypatch: pytest.MonkeyPatch, caps
 
     # Our implementation prints an error line; capture to make sure we at least emit something helpful
     out, err = capsys.readouterr()
-    assert 'Trello API error' in out
+    assert 'Failed to create Trello card' in out

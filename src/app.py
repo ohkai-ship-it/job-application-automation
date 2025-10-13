@@ -4,6 +4,7 @@ Simple Flask web app for easy job processing
 """
 
 from flask import Flask, render_template, request, jsonify, send_file, Response
+from werkzeug.exceptions import HTTPException
 import sys
 import os
 from pathlib import Path
@@ -49,7 +50,37 @@ processing_status = {}
 
 @app.errorhandler(Exception)
 def handle_exception(e: Exception):
-    """Global error handler for Flask app returning JSON and recording error."""
+    """Global error handler returning JSON and recording unexpected errors.
+
+    - 404/HTTPExceptions are returned without recording as errors (404 is common for /favicon.ico)
+    - Other HTTPExceptions are recorded with severity=warning
+    - Non-HTTP exceptions are recorded with severity=error
+    """
+    # Handle known HTTP exceptions gracefully
+    if isinstance(e, HTTPException):
+        status = e.code or 500
+        # Do not report 404s as errors (browsers commonly request /favicon.ico)
+        if status == 404:
+            logger.info("Route not found: %s %s", getattr(request, 'method', '?'), getattr(request, 'path', '?'))
+            return jsonify({"error": "Not Found", "path": getattr(request, 'path', None)}), 404
+
+        # For other HTTP exceptions, record as warning
+        try:
+            report_error(
+                "HTTPException in Flask app",
+                exc=e,
+                context={
+                    "path": getattr(request, 'path', None),
+                    "method": getattr(request, 'method', None),
+                    "status": status,
+                },
+                severity="warning",
+            )
+        finally:
+            logger.warning("HTTPException: %s", e)
+        return jsonify({"error": e.name, "message": e.description}), status
+
+    # Non-HTTP exceptions: unexpected errors
     try:
         report_error(
             "Unhandled exception in Flask app",
@@ -68,6 +99,11 @@ def handle_exception(e: Exception):
 def index() -> str:
     """Main page"""
     return render_template('index.html')
+
+@app.route('/favicon.ico')
+def favicon() -> Response:
+    """Prevent noisy 404s from browser favicon requests."""
+    return Response(status=204)
 
 @app.route('/process', methods=['POST'])
 def process() -> Response:

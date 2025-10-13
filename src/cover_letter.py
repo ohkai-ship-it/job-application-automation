@@ -65,7 +65,7 @@ class CoverLetterGenerator:
             return 'junior'
         return 'mid'
 
-    def generate_cover_letter(self, job_data: Dict[str, Any], target_language: Optional[str] = None) -> str:
+    def generate_cover_letter(self, job_data: Dict[str, Any], target_language: Optional[str] = None, *, tone: Optional[str] = None, auto_trim: bool = False) -> str:
         job_description = job_data.get('job_description', '')
         if not target_language:
             target_language = self.detect_language(job_description)
@@ -75,7 +75,7 @@ class CoverLetterGenerator:
             raise AIGenerationError(f"CV not available for language: {target_language}")
         job_title = job_data.get('job_title', '')
         seniority = self.detect_seniority(job_title, job_description)
-        prompt = self._build_prompt(job_data, cv_text, target_language, seniority)
+        prompt = self._build_prompt(job_data, cv_text, target_language, seniority, tone=tone)
         if not self.client:
             self.logger.error("OpenAI client not available")
             raise AIGenerationError("OpenAI client not available")
@@ -96,8 +96,11 @@ class CoverLetterGenerator:
 
         cover_letter = response.choices[0].message.content.strip()
 
-        # Enforce 180–240 words
+        # Enforce 180–240 words (optionally nudge with auto_trim)
         word_count = len(re.findall(r"\b\w+\b", cover_letter))
+        if (word_count < 180 or word_count > 240) and auto_trim:
+            cover_letter = self._auto_trim_to_range(cover_letter, 180, 240)
+            word_count = len(re.findall(r"\b\w+\b", cover_letter))
         if word_count < 180 or word_count > 240:
             self.logger.warning("Cover letter word count %s outside 180–240 range", word_count)
             raise AIGenerationError(f"Cover letter length out of bounds: {word_count} words")
@@ -109,16 +112,37 @@ class CoverLetterGenerator:
         else:
             return f"You are an expert in writing professional English cover letters. Write a professional cover letter for a {seniority}-level position."
 
-    def _build_prompt(self, job_data: Dict[str, Any], cv_text: str, language: str, seniority: str) -> str:
+    def _build_prompt(self, job_data: Dict[str, Any], cv_text: str, language: str, seniority: str, *, tone: Optional[str] = None) -> str:
         company = job_data.get('company_name', 'the company')
         job_title = job_data.get('job_title', 'the position')
         job_desc = job_data.get('job_description', '')[:3000]
         location = job_data.get('location', '')
         cv_summary = cv_text[:2000] if cv_text else "No CV available"
+        tone_line_de = f"Verwende einen {tone}-Ton." if tone and language == 'german' else ''
+        tone_line_en = f"Use a {tone} tone." if tone and language != 'german' else ''
         if language == 'german':
-            return f"""Schreibe ein Anschreiben für folgende Stelle:\n\nSTELLE:\nUnternehmen: {company}\nPosition: {job_title}\nOrt: {location}\n\nSTELLENBESCHREIBUNG:\n{job_desc}\n\nMEIN LEBENSLAUF (Auszug):\n{cv_summary}\n\nSchreibe ein überzeugendes Anschreiben, das:\n1. Einen persönlichen Bezug zur Firma/Mission herstellt\n2. 2-3 konkrete Beispiele aus meiner Erfahrung nutzt, die zur Stelle passen\n3. Meine relevanten Skills hervorhebt\n4. Zeigt, warum ich gut zur Stelle passe\n5. EXAKT 180-240 Wörter lang ist\n\nFormat: Nur der Fließtext des Anschreibens (ohne Anrede, ohne Adressblock, ohne Unterschrift am Ende)."""
+            return f"""Schreibe ein Anschreiben für folgende Stelle:\n\nSTELLE:\nUnternehmen: {company}\nPosition: {job_title}\nOrt: {location}\n\nSTELLENBESCHREIBUNG:\n{job_desc}\n\nMEIN LEBENSLAUF (Auszug):\n{cv_summary}\n\nSchreibe ein überzeugendes Anschreiben, das:\n1. Einen persönlichen Bezug zur Firma/Mission herstellt\n2. 2-3 konkrete Beispiele aus meiner Erfahrung nutzt, die zur Stelle passen\n3. Meine relevanten Skills hervorhebt\n4. Zeigt, warum ich gut zur Stelle passe\n5. EXAKT 180-240 Wörter lang ist\n{tone_line_de}\n\nFormat: Nur der Fließtext des Anschreibens (ohne Anrede, ohne Adressblock, ohne Unterschrift am Ende)."""
         else:
-            return f"""Write a cover letter for this position:\n\nJOB:\nCompany: {company}\nPosition: {job_title}\nLocation: {location}\n\nJOB DESCRIPTION:\n{job_desc}\n\nMY CV (Excerpt):\n{cv_summary}\n\nWrite a compelling cover letter that:\n1. Makes a personal connection to the company/mission\n2. Uses 2-3 concrete examples from my experience that match the role\n3. Highlights my relevant skills\n4. Shows why I am a great fit\n5. Is EXACTLY 180-240 words long\n\nFormat: Only the body text (no 'Dear Hiring Manager', no address block, no signature at the end)."""
+            return f"""Write a cover letter for this position:\n\nJOB:\nCompany: {company}\nPosition: {job_title}\nLocation: {location}\n\nJOB DESCRIPTION:\n{job_desc}\n\nMY CV (Excerpt):\n{cv_summary}\n\nWrite a compelling cover letter that:\n1. Makes a personal connection to the company/mission\n2. Uses 2-3 concrete examples from my experience that match the role\n3. Highlights my relevant skills\n4. Shows why I am a great fit\n5. Is EXACTLY 180-240 words long\n{tone_line_en}\n\nFormat: Only the body text (no 'Dear Hiring Manager', no address block, no signature at the end)."""
+
+    def _auto_trim_to_range(self, text: str, low: int, high: int) -> str:
+        """Best-effort trimming/expansion to fit word range without changing meaning too much.
+
+        Strategy: if too long, remove trailing sentences until within range; if too short, join lines and
+        avoid aggressive expansion (we still keep strict check after this).
+        """
+        words = re.findall(r"\b\w+\b", text)
+        if len(words) <= high and len(words) >= low:
+            return text
+        # Too long: remove last sentences
+        if len(words) > high:
+            sentences = re.split(r"(?<=[.!?])\s+", text.strip())
+            while sentences and len(re.findall(r"\b\w+\b", " ".join(sentences))) > high:
+                sentences = sentences[:-1]
+            return " ".join(sentences).strip()
+        # Too short: lightly compact whitespace (no expansion)
+        compact = re.sub(r"\s+", " ", text).strip()
+        return compact
 
     def save_cover_letter(self, cover_letter: str, job_data: Dict[str, Any], filename: Optional[str] = None) -> str:
         if not filename:

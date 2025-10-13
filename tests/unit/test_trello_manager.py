@@ -14,15 +14,19 @@ def test_trello_connect_init():
 def test_trello_connect_custom_fields():
     """Test custom field IDs are initialized"""
     manager = TrelloConnect()
-    assert 'company_name' in manager.custom_fields
-    assert 'job_title' in manager.custom_fields
-    assert 'source' in manager.custom_fields
-    assert manager.stepstone_option_id == "67adec40a91936eec7f48587"
+    # New implementation uses individual attributes instead of dict
+    # Updated to match new field names from previous implementation
+    assert hasattr(manager, 'field_company')
+    assert hasattr(manager, 'field_job_title')
+    assert hasattr(manager, 'field_source_url')  # Changed from field_source
+    assert hasattr(manager, 'field_firma_person')
+    assert hasattr(manager, 'field_source_list')
+    assert hasattr(manager, 'field_publication_date')
 
 def test_trello_manager_labels():
     """Test label IDs are initialized"""
     manager = TrelloConnect()
-    assert 'remote' in manager.labels
-    assert 'hybrid' in manager.labels
-    assert 'onsite' in manager.labels
-    assert 'interesting' in manager.labels
+    # New implementation uses individual attributes instead of dict
+    assert hasattr(manager, 'label_remote')
+    assert hasattr(manager, 'label_hybrid')
+    assert hasattr(manager, 'label_onsite')

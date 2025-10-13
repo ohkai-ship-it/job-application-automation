@@ -161,6 +161,21 @@ def cmd_trello_inspect(_: argparse.Namespace) -> int:
         name = lab.get('name') or '(No name)'
         print(f" - {name} (color={lab.get('color')}, id={lab.get('id')})")
 
+    # Custom Fields
+    custom_resp = get(f"boards/{board_id}/customFields")
+    if custom_resp.status_code == 200:
+        fields = custom_resp.json()
+        print(f"\nCustom Fields ({len(fields)}):")
+        for field in fields:
+            field_type = field.get('type', 'unknown')
+            field_name = field.get('name', '(No name)')
+            print(f" - {field_name} (type={field_type}, id={field.get('id')})")
+            if field_type == 'list' and 'options' in field:
+                opts = [opt['value']['text'] for opt in field.get('options', [])]
+                print(f"   Options: {', '.join(opts)}")
+    else:
+        print(f"\nCustom Fields: Could not retrieve (status {custom_resp.status_code})")
+
     print("\n=== Done ===")
     return 0
 

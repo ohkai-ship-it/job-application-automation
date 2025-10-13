@@ -86,12 +86,17 @@ def test_trello_inspect_happy_path(mock_get, capsys):
             return self._data
 
     def side_effect(url, params=None, timeout=30):
-        if "/boards/" in url and "/lists" not in url and "/labels" not in url:
+        if "/boards/" in url and "/lists" not in url and "/labels" not in url and "/customFields" not in url:
             return Resp({"name": "Board", "url": "https://trello/board/1"})
         if url.endswith("/lists"):
             return Resp([{"name": "To Do", "id": "1"}, {"name": "Doing", "id": "2"}])
         if url.endswith("/labels"):
             return Resp([{"name": "Priority", "color": "red", "id": "l1"}])
+        if url.endswith("/customFields"):
+            return Resp([
+                {"name": "Company", "type": "text", "id": "cf1"},
+                {"name": "Status", "type": "list", "id": "cf2", "options": [{"value": {"text": "Active"}}, {"value": {"text": "Inactive"}}]}
+            ])
         return Resp({}, status=404)
 
     mock_get.side_effect = side_effect
@@ -105,3 +110,4 @@ def test_trello_inspect_happy_path(mock_get, capsys):
                 assert "Board:" in out
                 assert "Lists (" in out
                 assert "Labels (" in out
+                assert "Custom Fields (" in out
