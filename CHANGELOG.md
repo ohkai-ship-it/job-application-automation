@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.2.0] - 2025-10-13
+
+Milestone: Enhanced cover letter generation with context-aware salutations and comprehensive Trello integration.
+
 ### Added
 - Context-aware cover letter salutations and valedictions:
   - Automatic German formality detection (du vs. Sie) via pronoun counting
@@ -13,7 +17,17 @@ All notable changes to this project will be documented in this file.
   - AI prompt includes formality instructions for German cover letters
   - Three-part structure: salutation, body, valediction stored in job_data
   - DOCX template placeholders: {{COVER_LETTER_SALUTATION}}, {{COVER_LETTER_VALEDICTION}}
-  - 25 new unit tests for formality detection, salutation/valediction generation
+  - 25 new unit tests for formality detection, salutation/valediction generation (128 total tests)
+- Comprehensive Trello card layout improvements:
+  - Structured markdown descriptions with key facts, source IDs, and company info
+  - Automatic enrichment: language detection, seniority detection, work mode normalization
+  - Label mapping for work mode, language, and seniority
+  - Custom field population (company name, job title, source, publication date)
+  - Idempotency checks to prevent duplicate cards
+  - Full documentation in docs/TRELLO_CARD_LAYOUT.md
+
+### Fixed
+- GitHub Actions CI: Added required environment variables for test execution
 
 ## [0.1.0] - 2025-10-12
 
