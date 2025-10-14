@@ -50,31 +50,41 @@ def test_process_job_posting_happy_path(monkeypatch, tmp_path):
             return "mid"
         def generate_cover_letter(self, *_):
             return "Short body text for testing."
+        def generate_salutation(self, job_data, language, formality, seniority):
+            return "Dear Hiring Manager,"
+        def generate_valediction(self, language, formality, seniority):
+            return "Sincerely,\nKai Voges"
         def save_cover_letter(self, cover_letter, job_data, filename=None):
             p = tmp_path / "out" / "cover_letters" / "letter.txt"
+            p.parent.mkdir(parents=True, exist_ok=True)
             p.write_text(cover_letter, encoding="utf-8")
             return str(p)
     monkeypatch.setattr(main, "CoverLetterGenerator", lambda: FakeAI())
 
     # Patch Word generator to avoid DOCX/PDF complexity
     class FakeWord:
+        sender = {'name': 'Dr. Kai Voges'}
+        
         def generate_from_template(self, text, job, docx_filename, language="english"):
             p = tmp_path / "out" / "cover_letters" / "letter.docx"
+            p.parent.mkdir(parents=True, exist_ok=True)
             p.write_text("docx", encoding="utf-8")
             return str(p)
         def convert_to_pdf(self, docx_file, pdf_filename):
             p = tmp_path / "out" / "cover_letters" / "letter.pdf"
+            p.parent.mkdir(parents=True, exist_ok=True)
             p.write_text("pdf", encoding="utf-8")
             return str(p)
     monkeypatch.setattr(main, "WordCoverLetterGenerator", lambda: FakeWord())
 
     url = "https://www.stepstone.de/stellenangebote--Example--123-inline.html"
-    result = main.process_job_posting(url, generate_cover_letter=True, generate_pdf=True)
+    result = main.process_job_posting(url, generate_cover_letter=True, generate_pdf=False)
 
     assert result["status"] == "success"
     assert result["job_data"]["company_name"] == "TestCo"
     assert result["trello_card"]["shortUrl"].startswith("https://trello.example/")
-    assert Path(result["data_file"]).exists()
-    assert Path(result["cover_letter_text_file"]).exists()
+    # data_file is disabled, so we don't check it
+    # TXT file generation is skipped (not needed), so we don't check it
     assert Path(result["cover_letter_docx_file"]).exists()
-    assert Path(result["cover_letter_pdf_file"]).exists()
+    # PDF generation is disabled by default
+    # assert Path(result["cover_letter_pdf_file"]).exists()

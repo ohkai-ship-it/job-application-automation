@@ -1,7 +1,7 @@
 import requests
 import pytest
 
-from src.utils.http import request_with_retries
+from src.utils.http_utils import request_with_retries
 
 
 class DummyResponse:

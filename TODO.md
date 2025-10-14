@@ -20,6 +20,21 @@
     - [ ] Add a short Table of Contents
     - [ ] Add a "Known limitations" section (Stepstone-only, template expectations, docx2pdf availability)
 
+### Future Enhancements (Nice-to-Have)
+- [ ] **Trello Card Location/Map Feature**: Implement reliable location mapping
+    - Current issue: Trello's geocoding via API is unreliable (sometimes works, sometimes doesn't)
+    - Attempted approaches:
+      - Setting `address` and `locationName` with "City, Deutschland" format
+      - Trello requires coordinates for map display, but geocoding is inconsistent
+    - Possible solutions to explore:
+      - Use a geocoding service (Google Maps API, Nominatim) to get coordinates before sending to Trello
+      - Maintain hardcoded coordinates dictionary for common German cities
+      - Wait for Trello API improvements
+    - Code: `_set_card_location()` method exists but is currently disabled in `trello_connect.py`
+- [ ] **Attachments Reliability**: Investigate timeout issues with Trello attachments API
+    - Current issue: Attachment API calls frequently timeout (10s timeout)
+    - May need to increase timeout or implement async/background attachment uploads
+
 ## Completed
 
 - Helper Scripts Audit: consolidated helpers and added diagnostics CLI

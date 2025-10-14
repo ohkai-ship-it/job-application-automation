@@ -10,13 +10,13 @@ from pathlib import Path
 from typing import Optional, Dict, Any
 try:
     from .utils.env import get_str
-    from .utils.logging import get_logger
+    from .utils.log_config import get_logger
     from .utils.errors import AIGenerationError
 except ImportError:
     import sys
     sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
     from utils.env import get_str
-    from utils.logging import get_logger
+    from utils.log_config import get_logger
     from utils.errors import AIGenerationError
 try:
     from openai import OpenAI

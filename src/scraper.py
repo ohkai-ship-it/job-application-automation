@@ -6,14 +6,14 @@ import re
 from pathlib import Path
 from typing import Optional, Dict, Any, Tuple, List, Union
 try:
-    from .utils.logging import get_logger
-    from .utils.http import request_with_retries
+    from .utils.log_config import get_logger
+    from .utils.http_utils import request_with_retries
     from .utils.errors import ScraperError
 except Exception:
     import os, sys
     sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-    from utils.logging import get_logger
-    from utils.http import request_with_retries
+    from utils.log_config import get_logger
+    from utils.http_utils import request_with_retries
     from utils.errors import ScraperError
 
 # Type aliases for clarity
@@ -91,6 +91,111 @@ def split_address(address_dict: Address) -> Tuple[str, str]:
     line2 = ' '.join(parts)
     
     return (line1, line2)
+
+
+def extract_company_address_from_description(description: str, company_name: str) -> Optional[Dict[str, str]]:
+    """
+    Extract company address from job description text.
+    
+    Many job postings include the company address at the end under sections like:
+    - "Weitere Informationen" (DE)
+    - "Additional Information" (EN)
+    - Company name followed by street and postal code
+    
+    Prioritizes addresses found in "Weitere Informationen" or "Additional Information" sections.
+    
+    Args:
+        description: Full job description text
+        company_name: Company name to look for
+        
+    Returns:
+        Dictionary with 'line1' (street) and 'line2' (postal + city) or None
+    """
+    if not description or not company_name:
+        return None
+    
+    # Look for address patterns after the company name
+    # Typical format:
+    # Company Name
+    # Street Number
+    # Postal Code City
+    
+    lines = description.split('\n')
+    
+    # Priority 1: Look in "Weitere Informationen" or "Additional Information" sections
+    priority_sections = ['weitere informationen', 'additional information', 'contact information', 'kontaktinformationen']
+    in_priority_section = False
+    priority_section_start = -1
+    
+    for i, line in enumerate(lines):
+        line_lower = line.lower().strip()
+        if any(section in line_lower for section in priority_sections):
+            in_priority_section = True
+            priority_section_start = i
+            break
+    
+    # Helper function to extract address from a range of lines
+    def find_address_after_company(start_idx, end_idx=None):
+        if end_idx is None:
+            end_idx = len(lines)
+        
+        for i in range(start_idx, min(end_idx, len(lines))):
+            line = lines[i]
+            if company_name.lower() in line.lower():
+                # Check the next few lines for address patterns
+                remaining_lines = lines[i+1:min(i+4, end_idx)]
+                
+                street = None
+                postal_city = None
+                
+                for next_line in remaining_lines:
+                    next_line = next_line.strip()
+                    if not next_line:
+                        continue
+                    
+                    # Skip URLs
+                    if next_line.startswith('http'):
+                        continue
+                    
+                    # German postal code pattern: 5 digits followed by city name
+                    postal_match = re.match(r'^(\d{5})\s+(.+)$', next_line)
+                    if postal_match:
+                        postal_city = next_line
+                        break
+                
+                    # Street pattern: contains letters, numbers, and common street suffixes
+                    # Examples: "Philipp-Reis-Straße 4", "Bahnhofstraße 5", "Main Street 123"
+                    street_patterns = [
+                        r'.*(?:straße|strasse|weg|platz|allee|ring|gasse|str\.|street|avenue|road|drive|lane).*\d+',
+                        r'^[A-Za-zäöüÄÖÜß\-\s]+\d+',  # Generic: text followed by number
+                    ]
+                    
+                    for pattern in street_patterns:
+                        if re.search(pattern, next_line, re.IGNORECASE):
+                            street = next_line
+                            break
+                
+                # If we found both street and postal_city, we have a complete address
+                if street and postal_city:
+                    return {
+                        'line1': street,
+                        'line2': postal_city
+                    }
+        
+        return None
+    
+    # Try priority section first (Weitere Informationen, etc.)
+    if in_priority_section:
+        address = find_address_after_company(priority_section_start, len(lines))
+        if address:
+            return address
+    
+    # Fallback: search entire document
+    address = find_address_after_company(0, len(lines))
+    if address:
+        return address
+    
+    return None
 
 
 def scrape_stepstone_job(url: str) -> Optional[JobData]:
@@ -273,29 +378,46 @@ def scrape_stepstone_job(url: str) -> Optional[JobData]:
                 logger.debug("Company Reference (from JSON-LD): %s", job_data['company_job_reference'])
         
         # 7. Company Address
-        if json_ld_data and 'jobLocation' in json_ld_data:
-            location_data = json_ld_data['jobLocation']
-            if isinstance(location_data, dict) and 'address' in location_data:
-                address = location_data['address']
-                address_parts = []
-                if 'streetAddress' in address:
-                    address_parts.append(address['streetAddress'])
-                if 'postalCode' in address:
-                    address_parts.append(address['postalCode'])
-                if 'addressLocality' in address:
-                    address_parts.append(address['addressLocality'])
-                if 'addressCountry' in address:
-                    address_parts.append(address['addressCountry'])
-                
-                if address_parts:
-                    job_data['company_address'] = ', '.join(address_parts)
-                    # Split into two lines
-                    lines = split_address(address)
-                    job_data['company_address_line1'] = lines[0]
-                    job_data['company_address_line2'] = lines[1]
-                    logger.debug("Company Address: %s", job_data['company_address'])
-                    logger.debug("  Line 1: %s", job_data['company_address_line1'])
-                    logger.debug("  Line 2: %s", job_data['company_address_line2'])
+        # Try to extract company address from job description text first
+        # (this is more reliable than jobLocation which often contains job location, not company HQ)
+        if job_data.get('job_description') and job_data.get('company_name'):
+            extracted_address = extract_company_address_from_description(
+                job_data['job_description'], 
+                job_data['company_name']
+            )
+            if extracted_address:
+                job_data['company_address_line1'] = extracted_address['line1']
+                job_data['company_address_line2'] = extracted_address['line2']
+                job_data['company_address'] = f"{extracted_address['line1']}, {extracted_address['line2']}"
+                logger.debug("Company Address (from job description): %s", job_data['company_address'])
+                logger.debug("  Line 1: %s", job_data['company_address_line1'])
+                logger.debug("  Line 2: %s", job_data['company_address_line2'])
+        
+        # Fallback: use jobLocation if no address found in description
+        if not job_data.get('company_address'):
+            if json_ld_data and 'jobLocation' in json_ld_data:
+                location_data = json_ld_data['jobLocation']
+                if isinstance(location_data, dict) and 'address' in location_data:
+                    address = location_data['address']
+                    address_parts = []
+                    if 'streetAddress' in address:
+                        address_parts.append(address['streetAddress'])
+                    if 'postalCode' in address:
+                        address_parts.append(address['postalCode'])
+                    if 'addressLocality' in address:
+                        address_parts.append(address['addressLocality'])
+                    if 'addressCountry' in address:
+                        address_parts.append(address['addressCountry'])
+                    
+                    if address_parts:
+                        job_data['company_address'] = ', '.join(address_parts)
+                        # Split into two lines
+                        lines = split_address(address)
+                        job_data['company_address_line1'] = lines[0]
+                        job_data['company_address_line2'] = lines[1]
+                        logger.debug("Company Address (from jobLocation fallback): %s", job_data['company_address'])
+                        logger.debug("  Line 1: %s", job_data['company_address_line1'])
+                        logger.debug("  Line 2: %s", job_data['company_address_line2'])
         
         # 8. Website Link
         real_company_website = None

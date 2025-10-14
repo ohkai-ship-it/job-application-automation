@@ -16,7 +16,7 @@ import requests
 
 import src.utils.env as env_utils
 import src.utils.trello as trello_utils
-from src.utils.html import (
+from src.utils.html_utils import (
     load_html_file,
     parse_html,
     find_headers,

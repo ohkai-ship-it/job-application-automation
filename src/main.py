@@ -13,7 +13,7 @@ from trello_connect import TrelloConnect
 from cover_letter import CoverLetterGenerator
 from docx_generator import WordCoverLetterGenerator
 from utils.env import load_env, get_str, validate_env
-from utils.logging import get_logger
+from utils.log_config import get_logger
 from utils.error_reporting import report_error
 import json
 from datetime import datetime
@@ -42,7 +42,7 @@ from typing import Any, Dict, List, Optional
 def process_job_posting(
     url: str,
     generate_cover_letter: bool = True,
-    generate_pdf: bool = True
+    generate_pdf: bool = False  # Disabled by default to save time for manual edits
 ) -> Dict[str, Any]:
     """
     Complete workflow: Scrape job posting, create Trello card, generate cover letter and PDF
@@ -50,7 +50,7 @@ def process_job_posting(
     Args:
         url (str): Stepstone job posting URL
         generate_cover_letter (bool): Whether to generate a cover letter
-        generate_pdf (bool): Whether to convert to PDF
+        generate_pdf (bool): Whether to convert to PDF (default: False, as manual edits are needed)
         
     Returns:
         dict: Result with status and data
@@ -85,8 +85,9 @@ def process_job_posting(
     
     # Save scraped data
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-    filename = DATA_DIR / f"scraped_job_{timestamp}.json"
-    save_to_json(job_data, str(filename))
+    # Skip saving JSON file
+    # filename = DATA_DIR / f"scraped_job_{timestamp}.json"
+    # save_to_json(job_data, str(filename))
     
     # Step 2: Create Trello card
     logger.info("%s", "=" * 80)
@@ -117,12 +118,78 @@ def process_job_posting(
         logger.info("%s", "-" * 80)
         
         try:
-            # Generate AI text
-            ai_generator = CoverLetterGenerator()
-            cover_letter_text = ai_generator.generate_cover_letter(job_data)
+            # Check if we should use placeholder (for testing or when OpenAI is unavailable)
+            use_placeholder = os.getenv('USE_PLACEHOLDER_COVER_LETTER', 'false').lower() == 'true'
             
-            # Detect language
-            language = ai_generator.detect_language(job_data.get('job_description', ''))
+            if use_placeholder:
+                logger.info("Using placeholder cover letter (OpenAI disabled)")
+                
+                # We still need the generator for salutation and valediction methods
+                # but we'll skip the actual AI call
+                try:
+                    ai_generator = CoverLetterGenerator()
+                except Exception:
+                    # If CoverLetterGenerator fails (missing API key), create a minimal mock
+                    ai_generator = None
+                
+                # Generate 200-word placeholder body
+                company = job_data.get('company_name', 'the company')
+                position = job_data.get('job_title', 'this position')
+                placeholder_words = [
+                    f"I am writing to express my strong interest in the {position} position at {company}.",
+                    "With my extensive background in software development and proven track record of delivering high-quality solutions,",
+                    "I am confident that I would be a valuable addition to your team.",
+                    "Throughout my career, I have developed expertise in various technologies and methodologies.",
+                    "My experience includes working on complex projects that required both technical skills and collaborative teamwork.",
+                    "I have consistently demonstrated my ability to adapt to new challenges and learn emerging technologies quickly.",
+                    "In my previous roles, I have successfully led development initiatives and mentored junior developers.",
+                    "I am particularly drawn to this opportunity because of your company's reputation for innovation and excellence.",
+                    "My technical skills combined with my passion for creating elegant solutions make me an ideal candidate.",
+                    "I am excited about the possibility of contributing to your team's success and growing with the organization.",
+                    "I believe my background aligns well with the requirements outlined in the job description.",
+                    "I am eager to bring my expertise to your company and help drive your projects forward.",
+                    "Thank you for considering my application. I look forward to the opportunity to discuss",
+                    "how my skills can contribute to your team's objectives and organizational goals.",
+                ]
+                cover_letter_body = " ".join(placeholder_words)
+                language = 'english'  # Default to English for placeholder
+                
+                # Generate salutation and valediction using the generator if available
+                if ai_generator:
+                    seniority = ai_generator.detect_seniority(
+                        job_data.get('job_title', ''),
+                        job_data.get('job_description', '')
+                    )
+                    formality = 'formal'  # Default for placeholder
+                    salutation = ai_generator.generate_salutation(job_data, language, formality, seniority)
+                    valediction = ai_generator.generate_valediction(language, formality, seniority)
+                else:
+                    # Fallback if generator not available
+                    salutation = "Dear Hiring Manager,"
+                    valediction = "Sincerely,"
+                    seniority = "mid"
+                
+                # Store all parts in job_data (same as AI path)
+                job_data['cover_letter_salutation'] = salutation
+                job_data['cover_letter_body'] = cover_letter_body
+                job_data['cover_letter_valediction'] = valediction
+                
+                # Combine for preview and file saving
+                cover_letter_text = f"{salutation}\n\n{cover_letter_body}\n\n{valediction}"
+                
+                logger.info(f"Generated placeholder: salutation='{salutation}', body_words={len(cover_letter_body.split())}, valediction='{valediction}'")
+            else:
+                # Generate AI text
+                ai_generator = CoverLetterGenerator()
+                cover_letter_body = ai_generator.generate_cover_letter(job_data)
+                
+                # Detect language
+                language = ai_generator.detect_language(job_data.get('job_description', ''))
+                
+                # Combine salutation + body + valediction for complete letter
+                salutation = job_data.get('cover_letter_salutation', '')
+                valediction = job_data.get('cover_letter_valediction', '')
+                cover_letter_text = f"{salutation}\n\n{cover_letter_body}\n\n{valediction}"
             
             # Display preview
             logger.info("--- Cover Letter Preview ---")
@@ -130,8 +197,29 @@ def process_job_posting(
             logger.info("%s", preview)
             logger.info("%s", "-" * 80)
             
-            # Save text version
-            cover_letter_file = ai_generator.save_cover_letter(cover_letter_text, job_data)
+            # Save text version (complete with salutation and valediction)
+            if use_placeholder:
+                # Skip saving TXT file for placeholder
+                # output_dir = Path('output/cover_letters')
+                # output_dir.mkdir(parents=True, exist_ok=True)
+                # company_safe = job_data.get('company_name', 'Company').replace(' ', '_')
+                # timestamp_now = datetime.now().strftime("%Y%m%d_%H%M%S")
+                # cover_letter_file = output_dir / f"cover_letter_{company_safe}_{timestamp_now}.txt"
+                # with open(cover_letter_file, 'w', encoding='utf-8') as f:
+                #     f.write(cover_letter_text)
+                # logger.info(f"Cover letter saved: {cover_letter_file}")
+                logger.info("TXT file generation skipped (not needed)")
+            else:
+                # Skip saving TXT file for AI path too
+                # output_dir = Path('output/cover_letters')
+                # output_dir.mkdir(parents=True, exist_ok=True)
+                # company_safe = job_data.get('company_name', 'Company').replace(' ', '_')
+                # timestamp_now = datetime.now().strftime("%Y%m%d_%H%M%S")
+                # cover_letter_file = output_dir / f"cover_letter_{company_safe}_{timestamp_now}.txt"
+                # with open(cover_letter_file, 'w', encoding='utf-8') as f:
+                #     f.write(cover_letter_text)
+                # logger.info(f"Cover letter saved: {cover_letter_file}")
+                logger.info("TXT file generation skipped (not needed)")
             
             # Step 4: Generate Word document
             logger.info("%s", "=" * 80)
@@ -139,11 +227,27 @@ def process_job_posting(
             logger.info("%s", "-" * 80)
             
             word_generator = WordCoverLetterGenerator()
-            company = job_data.get('company_name', 'Company').replace(' ', '_')
-            docx_filename = f"output/cover_letters/CoverLetter_{company}_{timestamp}.docx"
+            
+            # Generate filename based on language
+            sender_name = word_generator.sender['name']  # "Dr. Kai Voges"
+            # Remove title (Dr., Prof., etc.) from filename
+            sender_name_no_title = sender_name.replace('Dr. ', '').replace('Prof. ', '')
+            company_name = job_data.get('company_name', 'Company')
+            date_str = datetime.now().strftime('%Y-%m-%d')  # e.g., "2025-10-14"
+            
+            if language == 'german':
+                base_filename = f"Anschreiben - {sender_name_no_title} - {date_str} - {company_name}"
+            else:  # English
+                base_filename = f"Cover letter - {sender_name_no_title} - {date_str} - {company_name}"
+            
+            docx_filename = f"output/cover_letters/{base_filename}.docx"
+            
+            # Important: Pass only the BODY to the template generator
+            # The template has separate placeholders for salutation and valediction
+            cover_letter_body_only = job_data.get('cover_letter_body', cover_letter_text)
             
             docx_file = word_generator.generate_from_template(
-                cover_letter_text,
+                cover_letter_body_only,
                 job_data,
                 docx_filename,
                 language=language
@@ -188,7 +292,7 @@ def process_job_posting(
     logger.info("  Position: %s", job_data.get('job_title', 'N/A'))
     logger.info("  Location: %s", job_data.get('location', 'N/A'))
     logger.info("  Trello Card: %s", card['shortUrl'])
-    logger.info("  Data saved: %s", filename)
+    # logger.info("  Data saved: %s", filename)  # JSON file saving disabled
     if cover_letter_file:
         logger.info("  Cover Letter (TXT): %s", cover_letter_file)
     if docx_file:
@@ -200,7 +304,7 @@ def process_job_posting(
         'status': 'success',
         'job_data': job_data,
         'trello_card': card,
-        'data_file': filename,
+        # 'data_file': filename,  # JSON file saving disabled
         'cover_letter_text_file': cover_letter_file,
         'cover_letter_docx_file': docx_file,
         'cover_letter_pdf_file': pdf_file

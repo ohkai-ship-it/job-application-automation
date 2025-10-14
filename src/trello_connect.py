@@ -10,15 +10,15 @@ import os
 import requests
 from typing import Callable, Dict, Any, Optional
 try:
-    from .utils.logging import get_logger
+    from .utils.log_config import get_logger
     from .utils.env import load_env, get_str
-    from .utils.http import request_with_retries
+    from .utils.http_utils import request_with_retries
 except ImportError:
     import sys
     sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-    from utils.logging import get_logger
+    from utils.log_config import get_logger
     from utils.env import load_env, get_str
-    from utils.http import request_with_retries
+    from utils.http_utils import request_with_retries
 
 
 class TrelloConnect:
@@ -47,7 +47,10 @@ class TrelloConnect:
         self.label_hybrid = get_str('TRELLO_LABEL_HYBRID', default='')
         self.label_onsite = get_str('TRELLO_LABEL_ONSITE', default='')
         
-        # Label IDs for language
+        # Label IDs for location
+        self.label_ddd = get_str('TRELLO_LABEL_DDD', default='')  # Düsseldorf
+        
+        # Label IDs for language (deprecated - using custom field instead)
         self.label_de = get_str('TRELLO_LABEL_DE', default='')
         self.label_en = get_str('TRELLO_LABEL_EN', default='')
         
@@ -66,6 +69,12 @@ class TrelloConnect:
         # List/dropdown fields
         self.field_source_list = get_str('TRELLO_FIELD_QUELLE', default='')  # Quelle (Stepstone, LinkedIn, etc.)
         self.field_source_stepstone_option = get_str('TRELLO_FIELD_QUELLE_STEPSTONE', default='')  # Stepstone option ID
+        
+        self.field_sprache = get_str('TRELLO_FIELD_SPRACHE', default='')  # Sprache (Language)
+        self.field_sprache_de_de = get_str('TRELLO_FIELD_SPRACHE_DE_DE', default='')  # DE -> DE
+        self.field_sprache_en_en = get_str('TRELLO_FIELD_SPRACHE_EN_EN', default='')  # EN -> EN
+        self.field_sprache_en_de = get_str('TRELLO_FIELD_SPRACHE_EN_DE', default='')  # EN -> DE
+        self.field_sprache_de_en = get_str('TRELLO_FIELD_SPRACHE_DE_EN', default='')  # DE -> EN
         
         # Date fields
         self.field_publication_date = get_str('TRELLO_FIELD_AUSSCHREIBUNGSDATUM', default='')  # Ausschreibungsdatum
@@ -98,84 +107,17 @@ class TrelloConnect:
     
     def _build_card_description(self, job_data: Dict[str, Any]) -> str:
         """
-        Build structured markdown description for Trello card.
+        Build card description with ONLY the complete job description text.
+        No formatting, no company info - just the raw JD text.
         
         Args:
             job_data: Normalized job data dict
             
         Returns:
-            Markdown-formatted description string
+            Job description text only
         """
-        # Helper to get value or N/A
-        def get_val(key: str, default: str = 'N/A') -> str:
-            val = job_data.get(key)
-            return str(val) if val else default
-        
-        # Top section: key facts
-        # Prefer job_title_clean if available, otherwise job_title
-        title = job_data.get('job_title_clean') or job_data.get('job_title', 'N/A')
-        company = get_val('company_name')
-        location = get_val('location')
-        
-        # Format work_mode, language, seniority (capitalize only if not N/A)
-        work_mode_raw = get_val('work_mode', 'N/A')
-        work_mode = work_mode_raw.capitalize() if work_mode_raw != 'N/A' else 'N/A'
-        
-        language_raw = get_val('language', 'N/A')
-        language = language_raw.upper() if language_raw != 'N/A' else 'N/A'
-        
-        seniority_raw = get_val('seniority', 'N/A')
-        seniority = seniority_raw.capitalize() if seniority_raw != 'N/A' else 'N/A'
-        
-        desc = f"""**Job Title:** {title}
-**Company:** {company}
-**Location:** {location}
-**Work Mode:** {work_mode}
-**Language:** {language}
-**Seniority:** {seniority}
-
----
-
-"""
-        
-        # Source and IDs
-        source_url = job_data.get('source_url', '')
-        stepstone_id = get_val('stepstone_job_id')
-        company_ref = get_val('company_job_reference')
-        
-        if source_url:
-            desc += f"**Source:** {source_url}\n"
-        desc += f"**Stepstone ID:** {stepstone_id}\n"
-        desc += f"**Company Reference:** {company_ref}\n\n---\n\n"
-        
-        # Job description excerpt (first 300 chars)
-        job_desc = job_data.get('job_description', '')
-        if job_desc:
-            excerpt = job_desc[:300].strip()
-            if len(job_desc) > 300:
-                excerpt += "..."
-            desc += f"**Job Description (excerpt):**\n{excerpt}\n\n---\n\n"
-        
-        # Company address and links
-        addr_line1 = get_val('company_address_line1', '')
-        addr_line2 = get_val('company_address_line2', '')
-        career_page = job_data.get('career_page_link', '')
-        direct_apply = job_data.get('direct_apply_link', '')
-        
-        if addr_line1 or addr_line2:
-            desc += "**Company Address:**\n"
-            if addr_line1:
-                desc += f"{addr_line1}\n"
-            if addr_line2:
-                desc += f"{addr_line2}\n"
-            desc += "\n"
-        
-        if career_page:
-            desc += f"**Career Page:** {career_page}\n"
-        if direct_apply:
-            desc += f"**Direct Apply:** {direct_apply}\n"
-        
-        return desc.strip()
+        # Return only the job description text, nothing else
+        return job_data.get('job_description', 'No job description available')
     
     def _enrich_job_data(self, job_data: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -261,7 +203,12 @@ class TrelloConnect:
         elif work_mode == 'onsite' and self.label_onsite:
             labels.append(self.label_onsite)
         
-        # Language labels
+        # Location labels - add DDD if Düsseldorf
+        location = (job_data.get('location') or '').lower()
+        if 'düsseldorf' in location and self.label_ddd:
+            labels.append(self.label_ddd)
+        
+        # Language labels (deprecated - using custom field instead, but keeping for backwards compatibility)
         language = (job_data.get('language') or '').upper()
         if language == 'DE' and self.label_de:
             labels.append(self.label_de)
@@ -382,6 +329,36 @@ class TrelloConnect:
                 except Exception as e:
                     self.logger.warning("Error setting source field: %s", e)
         
+        # List/dropdown field: Sprache (Language) - set based on detected language
+        if self.field_sprache:
+            language = (job_data.get('language') or '').upper()
+            sprache_option_id = None
+            
+            # Map language to Sprache field option
+            if language == 'DE' and self.field_sprache_de_de:
+                sprache_option_id = self.field_sprache_de_de  # DE -> DE
+            elif language == 'EN' and self.field_sprache_en_en:
+                sprache_option_id = self.field_sprache_en_en  # EN -> EN
+            
+            if sprache_option_id:
+                try:
+                    url = f"{self.base_url}/cards/{card_id}/customField/{self.field_sprache}/item"
+                    payload = {'idValue': sprache_option_id}
+                    resp = self.requester(
+                        'PUT',
+                        url,
+                        params=self.auth_params,
+                        json=payload,
+                        timeout=10
+                    )
+                    
+                    if getattr(resp, 'status_code', 200) in (200, 201):
+                        self.logger.debug("Set Sprache to %s", language)
+                    else:
+                        self.logger.warning("Failed to set Sprache field: %s", resp.status_code)
+                except Exception as e:
+                    self.logger.warning("Error setting Sprache field: %s", e)
+        
         # Date field: Ausschreibungsdatum (Publication Date)
         if self.field_publication_date and job_data.get('publication_date'):
             try:
@@ -406,6 +383,100 @@ class TrelloConnect:
                     self.logger.warning("Failed to set publication date: %s", resp.status_code)
             except Exception as e:
                 self.logger.warning("Error setting publication date: %s", e)
+    
+    def _set_card_location(self, card_id: str, job_data: Dict[str, Any]) -> None:
+        """
+        Set card location (map) based on job location.
+        - If remote: set to "Germany"
+        - If location is Düsseldorf: keep default (Düsseldorf)
+        - Otherwise: set to job location city
+        
+        Args:
+            card_id: The Trello card ID
+            job_data: Normalized job data dict
+        """
+        work_mode = (job_data.get('work_mode') or '').lower()
+        location = job_data.get('location', 'Düsseldorf')
+        
+        # Determine what location to set
+        location_name = None
+        if work_mode == 'remote':
+            location_name = 'Germany'
+        elif 'düsseldorf' not in location.lower():
+            # Extract just city name (remove country, postal codes, etc.)
+            # Simple heuristic: take first part before comma
+            city = location.split(',')[0].strip()
+            # Add ", Deutschland" to help Trello geocode correctly (Trello uses German locale)
+            location_name = f"{city}, Deutschland"
+        # else: keep Düsseldorf as default (don't set location, let template default apply)
+        
+        if location_name:
+            try:
+                url = f"{self.base_url}/cards/{card_id}"
+                # Try setting both locationName and address for compatibility
+                payload = {
+                    'locationName': location_name,
+                    'address': location_name
+                }
+                resp = self.requester(
+                    'PUT',
+                    url,
+                    params=self.auth_params,
+                    json=payload,
+                    timeout=10
+                )
+                
+                if getattr(resp, 'status_code', 200) in (200, 201):
+                    self.logger.debug("Set card location to: %s", location_name)
+                else:
+                    self.logger.warning("Failed to set card location: %s", resp.status_code)
+            except Exception as e:
+                self.logger.warning("Error setting card location: %s", e)
+    
+    def _add_attachments(self, card_id: str, job_data: Dict[str, Any]) -> None:
+        """
+        Add attachments to the card:
+        - Stepstone link as "Ausschreibung"
+        - Company career page as "Firmenportal" (if available)
+        
+        Args:
+            card_id: The Trello card ID
+            job_data: Normalized job data dict
+        """
+        attachments_to_add = []
+        
+        # Add Stepstone link (source URL)
+        source_url = job_data.get('source_url', '')
+        if source_url:
+            attachments_to_add.append(('Ausschreibung', source_url))
+        
+        # Add career page if available
+        career_page = job_data.get('career_page_link', '')
+        if career_page:
+            attachments_to_add.append(('Firmenportal', career_page))
+        
+        # Add each attachment
+        for name, url_to_attach in attachments_to_add:
+            try:
+                url = f"{self.base_url}/cards/{card_id}/attachments"
+                payload = {
+                    'name': name,
+                    'url': url_to_attach
+                }
+                resp = self.requester(
+                    'POST',
+                    url,
+                    params=self.auth_params,
+                    json=payload,
+                    timeout=10
+                )
+                
+                if getattr(resp, 'status_code', 200) in (200, 201):
+                    self.logger.debug("Added attachment '%s': %s", name, url_to_attach)
+                else:
+                    self.logger.warning("Failed to add attachment '%s': %s", name, resp.status_code)
+            except Exception as e:
+                self.logger.warning("Error adding attachment '%s': %s", name, e)
     
     def create_card_from_job_data(self, job_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """
@@ -469,9 +540,12 @@ class TrelloConnect:
                 self.logger.info("Created Trello card: %s", card_id)
                 print(f"✓ Trello card created: {card_url}")
                 
-                # Best-effort: set custom fields
+                # Best-effort: set custom fields and attachments
                 if card_id:
                     self._set_custom_fields(card_id, enriched_data)
+                    # TODO: Location/map feature - Trello's geocoding is unreliable via API
+                    # self._set_card_location(card_id, enriched_data)
+                    self._add_attachments(card_id, enriched_data)
                 
                 return card_data
             else:

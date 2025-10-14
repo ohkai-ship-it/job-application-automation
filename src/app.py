@@ -12,7 +12,7 @@ sys.path.append(os.path.dirname(__file__))
 
 from main import process_job_posting
 from utils.env import load_env, get_str, validate_env
-from utils.logging import get_logger
+from utils.log_config import get_logger
 from utils.error_reporting import report_error
 import threading
 import json
@@ -137,7 +137,7 @@ def process_in_background(job_id: str, url: str) -> None:
         processing_status[job_id]['message'] = 'Scraping job posting...'
         processing_status[job_id]['progress'] = 20
         
-        result = process_job_posting(url, generate_cover_letter=True, generate_pdf=True)
+        result = process_job_posting(url, generate_cover_letter=True, generate_pdf=False)
         
         if result['status'] == 'success':
             def to_str(val):
@@ -152,8 +152,8 @@ def process_in_background(job_id: str, url: str) -> None:
                     'location': result['job_data'].get('location'),
                     'trello_card': result['trello_card']['shortUrl'],
                     'files': {
-                        'json': to_str(result['data_file']),
-                        'txt': to_str(result.get('cover_letter_text_file')),
+                        # 'json': to_str(result.get('data_file')),  # JSON file generation disabled
+                        # 'txt': to_str(result.get('cover_letter_text_file')),  # TXT file generation disabled
                         'docx': to_str(result.get('cover_letter_docx_file')),
                         'pdf': to_str(result.get('cover_letter_pdf_file'))
                     }

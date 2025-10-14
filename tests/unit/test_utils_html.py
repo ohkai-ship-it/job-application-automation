@@ -1,7 +1,7 @@
 import json
 import pytest
 
-from src.utils.html import parse_html, extract_json_ld_blocks, search_keywords
+from src.utils.html_utils import parse_html, extract_json_ld_blocks, search_keywords
 
 
 def test_extract_json_ld_blocks_handles_object_and_list():

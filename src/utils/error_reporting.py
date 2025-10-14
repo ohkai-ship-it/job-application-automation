@@ -14,7 +14,7 @@ from datetime import datetime, UTC
 from pathlib import Path
 from typing import Any, Dict, Optional
 
-from .logging import get_logger
+from .log_config import get_logger
 
 
 logger = get_logger(__name__)

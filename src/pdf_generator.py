@@ -19,12 +19,12 @@ from typing import Dict, Any
 
 # Logging and error types
 try:
-    from .utils.logging import get_logger
+    from .utils.log_config import get_logger
     from .utils.errors import DocumentError
 except Exception:
     import sys
     sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-    from utils.logging import get_logger
+    from utils.log_config import get_logger
     from utils.errors import DocumentError
 
 

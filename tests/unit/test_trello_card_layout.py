@@ -45,39 +45,18 @@ def test_build_card_name(sample_job_data):
 
 
 def test_build_card_description_contains_all_sections(sample_job_data):
-    """Test that description includes all expected sections."""
+    """Test that description returns only the job description text."""
     tc = TrelloConnect()
     desc = tc._build_card_description(sample_job_data)
     
-    # Key facts section
-    assert "**Job Title:** Senior Python Developer" in desc
-    assert "**Company:** Tech Corp GmbH" in desc
-    assert "**Location:** Berlin" in desc
-    assert "**Work Mode:** Hybrid" in desc
-    assert "**Language:** DE" in desc
-    assert "**Seniority:** Senior" in desc
-    
-    # Source and IDs
-    assert "**Source:** https://www.stepstone.de/job/123456" in desc
-    assert "**Stepstone ID:** 123456" in desc
-    assert "**Company Reference:** REF-2025-001" in desc
-    
-    # Job description excerpt (should be truncated)
-    assert "**Job Description (excerpt):**" in desc
-    assert "..." in desc  # Indicates truncation
-    
-    # Company address
-    assert "**Company Address:**" in desc
-    assert "Tech Street 42" in desc
-    assert "10115 Berlin" in desc
-    
-    # Links
-    assert "**Career Page:** https://techcorp.de/careers" in desc
-    assert "**Direct Apply:** https://techcorp.de/apply/123456" in desc
+    # Description should be only the job_description field (tripled in sample data)
+    expected_desc = sample_job_data['job_description']
+    assert desc == expected_desc
+    assert "We are looking for an experienced Python developer" in desc
 
 
 def test_build_card_description_handles_missing_fields():
-    """Test that description handles missing optional fields gracefully."""
+    """Test that description handles missing job_description field gracefully."""
     minimal_data = {
         "company_name": "Acme Inc",
         "job_title": "Developer",
@@ -87,11 +66,8 @@ def test_build_card_description_handles_missing_fields():
     tc = TrelloConnect()
     desc = tc._build_card_description(minimal_data)
     
-    assert "**Job Title:** Developer" in desc
-    assert "**Company:** Acme Inc" in desc
-    assert "**Work Mode:** N/A" in desc
-    assert "**Language:** N/A" in desc
-    assert "**Seniority:** N/A" in desc
+    # Should return default message when job_description is missing
+    assert desc == "No job description available"
 
 
 def test_get_label_ids_work_mode(sample_job_data, monkeypatch):
