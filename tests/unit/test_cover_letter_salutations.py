@@ -148,17 +148,17 @@ class TestValedictionGeneration:
     def test_valediction_english_executive(self, generator):
         """Test English valediction for executive position."""
         result = generator.generate_valediction('english', 'formal', 'executive')
-        assert result == 'Sincerely'
+        assert result == 'Sincerely,'
     
     def test_valediction_english_junior(self, generator):
         """Test English valediction for junior position."""
         result = generator.generate_valediction('english', 'informal', 'junior')
-        assert result == 'Best'
+        assert result == 'Best,'
     
     def test_valediction_english_mid(self, generator):
         """Test English valediction for mid-level position."""
         result = generator.generate_valediction('english', 'formal', 'mid')
-        assert result == 'Best regards'
+        assert result == 'Best regards,'
 
 
 class TestIntegration:
@@ -249,4 +249,4 @@ class TestIntegration:
         
         # Check English salutation and valediction
         assert 'Dear' in job_data['cover_letter_salutation']
-        assert job_data['cover_letter_valediction'] in ['Sincerely', 'Best regards']
+        assert job_data['cover_letter_valediction'] in ['Sincerely,', 'Best regards,']

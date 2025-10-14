@@ -1,0 +1,14 @@
+{
+  "id": "evt_20251014T065044Z",
+  "timestamp": "20251014T065044Z",
+  "severity": "error",
+  "message": "Cover letter generation failed",
+  "exception_type": "AIGenerationError",
+  "stack": "Traceback (most recent call last):\n  File \"C:\\Users\\Kai\\OneDrive\\Documents\\04 Themen\\Tech\\Programmierung\\VS Code\\Python\\job-application-automation\\src\\main.py\", line 122, in process_job_posting\n    cover_letter_text = ai_generator.generate_cover_letter(job_data)\n  File \"C:\\Users\\Kai\\OneDrive\\Documents\\04 Themen\\Tech\\Programmierung\\VS Code\\Python\\job-application-automation\\src\\cover_letter.py\", line 249, in generate_cover_letter\n    raise AIGenerationError(f\"Cover letter length out of bounds: {word_count} words\")\nutils.errors.AIGenerationError: Cover letter length out of bounds: 175 words\n",
+  "context": {
+    "company": "ecotel communication ag",
+    "title": "Produktmanager / Projektmanager / Process Manager (m/w/d)",
+    "url": "https://www.stepstone.de/stellenangebote--Produktmanager-Projektmanager-Process-Manager-m-w-d-Duesseldorf-ecotel-communication-ag--12644036-inline.html?rltr=34_9_25_seorl_m_0_0_4_0_0_0"
+  },
+  "pid": 500
+}

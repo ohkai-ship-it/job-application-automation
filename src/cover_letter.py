@@ -188,13 +188,13 @@ class CoverLetterGenerator:
                 # Formal German: standard professional closing
                 return "Mit freundlichen Grüßen"
         else:
-            # English closings
+            # English closings (with comma)
             if seniority in ['executive', 'senior']:
-                return "Sincerely"  # Most formal
+                return "Sincerely,"  # Most formal
             elif formality == 'informal':
-                return "Best"  # Modern, slightly casual
+                return "Best,"  # Modern, slightly casual
             else:
-                return "Best regards"  # Professional standard
+                return "Best regards,"  # Professional standard
 
     def generate_cover_letter(self, job_data: Dict[str, Any], target_language: Optional[str] = None, *, tone: Optional[str] = None, auto_trim: bool = False) -> str:
         job_description = job_data.get('job_description', '')
@@ -287,7 +287,7 @@ class CoverLetterGenerator:
                 formality_line_de = "Verwende die Sie-Form (formal)."
         
         if language == 'german':
-            return f"""Schreibe ein Anschreiben für folgende Stelle:\n\nSTELLE:\nUnternehmen: {company}\nPosition: {job_title}\nOrt: {location}\n\nSTELLENBESCHREIBUNG:\n{job_desc}\n\nMEIN LEBENSLAUF (Auszug):\n{cv_summary}\n\nSchreibe ein überzeugendes Anschreiben, das:\n1. Einen persönlichen Bezug zur Firma/Mission herstellt\n2. 2-3 konkrete Beispiele aus meiner Erfahrung nutzt, die zur Stelle passen\n3. Meine relevanten Skills hervorhebt\n4. Zeigt, warum ich gut zur Stelle passe\n5. EXAKT 180-240 Wörter lang ist\n{tone_line_de}\n{formality_line_de}\n\nFormat: Nur der Fließtext des Anschreibens (ohne Anrede, ohne Adressblock, ohne Unterschrift am Ende)."""
+            return f"""Schreibe ein Anschreiben für folgende Stelle:\n\nSTELLE:\nUnternehmen: {company}\nPosition: {job_title}\nOrt: {location}\n\nSTELLENBESCHREIBUNG:\n{job_desc}\n\nMEIN LEBENSLAUF (Auszug):\n{cv_summary}\n\nSchreibe ein überzeugendes Anschreiben, das:\n1. Einen persönlichen Bezug zur Firma/Mission herstellt\n2. 2-3 konkrete Beispiele aus meiner Erfahrung nutzt, die zur Stelle passen\n3. Meine relevanten Skills hervorhebt\n4. Zeigt, warum ich gut zur Stelle passe\n5. EXAKT 180-240 Wörter lang ist\n{tone_line_de}\n{formality_line_de}\n\nWICHTIG: Beginne den Text mit einem Kleinbuchstaben (z.B. 'mit großem Interesse...'), da nach der Grußformel im Deutschen der erste Buchstabe klein geschrieben wird.\n\nFormat: Nur der Fließtext des Anschreibens (ohne Anrede, ohne Adressblock, ohne Unterschrift am Ende)."""
         else:
             return f"""Write a cover letter for this position:\n\nJOB:\nCompany: {company}\nPosition: {job_title}\nLocation: {location}\n\nJOB DESCRIPTION:\n{job_desc}\n\nMY CV (Excerpt):\n{cv_summary}\n\nWrite a compelling cover letter that:\n1. Makes a personal connection to the company/mission\n2. Uses 2-3 concrete examples from my experience that match the role\n3. Highlights my relevant skills\n4. Shows why I am a great fit\n5. Is EXACTLY 180-240 words long\n{tone_line_en}\n\nFormat: Only the body text (no 'Dear Hiring Manager', no address block, no signature at the end)."""
 
