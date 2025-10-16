@@ -134,14 +134,20 @@ def process() -> Response:
 def process_in_background(job_id: str, url: str) -> None:
     """Process job in background"""
     try:
+        logger.info(f"[{job_id}] Starting background processing for: {url}")
         processing_status[job_id]['message'] = 'Scraping job posting...'
         processing_status[job_id]['progress'] = 20
         
         result = process_job_posting(url, generate_cover_letter=True, generate_pdf=False)
+        logger.info(f"[{job_id}] Process result status: {result.get('status')}")
         
         if result['status'] == 'success':
             def to_str(val):
                 return str(val) if isinstance(val, Path) else val
+            
+            docx_file = result.get('cover_letter_docx_file')
+            logger.info(f"[{job_id}] DOCX file created: {docx_file}")
+            
             processing_status[job_id] = {
                 'status': 'complete',
                 'message': 'Automation complete!',
@@ -154,12 +160,14 @@ def process_in_background(job_id: str, url: str) -> None:
                     'files': {
                         # 'json': to_str(result.get('data_file')),  # JSON file generation disabled
                         # 'txt': to_str(result.get('cover_letter_text_file')),  # TXT file generation disabled
-                        'docx': to_str(result.get('cover_letter_docx_file')),
+                        'docx': to_str(docx_file),
                         'pdf': to_str(result.get('cover_letter_pdf_file'))
                     }
                 }
             }
+            logger.info(f"[{job_id}] Processing complete successfully")
         else:
+            logger.error(f"[{job_id}] Processing failed: {result.get('error')}")
             processing_status[job_id] = {
                 'status': 'error',
                 'message': f"Error: {result.get('error', 'Unknown error')}",
@@ -167,6 +175,7 @@ def process_in_background(job_id: str, url: str) -> None:
             }
     
     except Exception as e:
+        logger.exception(f"[{job_id}] Exception in background processing: {e}")
         processing_status[job_id] = {
             'status': 'error',
             'message': f'Error: {str(e)}',
