@@ -35,16 +35,24 @@ class CoverLetterGenerator:
             raise ValueError("OPENAI_API_KEY not found in environment")
         self.model = get_str('OPENAI_MODEL', default='gpt-4o-mini')
         self.client = OpenAI(api_key=self.api_key) if OpenAI else None
-        self.cv_de = self._load_cv('data/cv_de.pdf')
-        self.cv_en = self._load_cv('data/cv_en.pdf')
+        
+        # Use absolute paths for CV files to work regardless of current working directory
+        project_root = Path(__file__).parent.parent  # Go up from src/ to project root
+        self.cv_de = self._load_cv(str(project_root / 'data' / 'cv_de.pdf'))
+        self.cv_en = self._load_cv(str(project_root / 'data' / 'cv_en.pdf'))
 
     def _load_cv(self, filepath: str) -> Optional[str]:
-        if not pypdf or not os.path.exists(filepath):
+        if not pypdf:
+            self.logger.warning("pypdf not available, cannot load CV")
+            return None
+        if not os.path.exists(filepath):
+            self.logger.warning("CV file not found: %s", filepath)
             return None
         try:
             with open(filepath, 'rb') as file:
                 pdf_reader = pypdf.PdfReader(file)
                 text = "".join(page.extract_text() or '' for page in pdf_reader.pages)
+                self.logger.info("Successfully loaded CV: %s (%d characters)", filepath, len(text))
                 return text
         except Exception as e:
             self.logger.warning("Error loading CV %s: %s", filepath, e)
