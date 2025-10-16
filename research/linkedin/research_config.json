@@ -1,0 +1,27 @@
+{
+  "research_settings": {
+    "max_requests_per_hour": 10,
+    "delay_between_requests": 5,
+    "max_daily_requests": 50,
+    "use_random_delays": true,
+    "respect_rate_limits": true
+  },
+  "browser_settings": {
+    "headless": false,
+    "slow_mo": 100,
+    "user_agent_rotation": true,
+    "clear_cookies_between_sessions": true
+  },
+  "monitoring": {
+    "log_all_requests": true,
+    "capture_responses": true,
+    "alert_on_rate_limit": true,
+    "save_har_files": true
+  },
+  "safety_measures": {
+    "use_vpn": true,
+    "separate_account_only": true,
+    "no_production_data": true,
+    "respect_tos": true
+  }
+}
