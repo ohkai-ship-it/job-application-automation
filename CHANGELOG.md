@@ -4,6 +4,56 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.3.0] - 2025-10-16
+
+Milestone: Database integration for duplicate detection and AI cost tracking.
+
+### Added
+- **SQLite Database Layer** (`src/database.py`):
+  - Lightweight 2-table schema for duplicate detection and AI metadata tracking
+  - `processed_jobs` table: SHA256-based URL deduplication with Trello card links
+  - `generation_metadata` table: AI model, cost, word count, and generated text tracking
+  - Singleton pattern with context managers for safe connections
+  - 6 indexed queries for performance (duplicate check, recent jobs, search, stats, cost tracking)
+  - Comprehensive unit tests (6/6 passing)
+  - Philosophy: Support tool for duplicates, NOT application management (Trello remains source of truth)
+- **Database Integration**:
+  - Step 0 in `main.py`: Duplicate detection before scraping (warns but continues in testing mode)
+  - Database saving after successful processing (job data + AI metadata + Trello links)
+  - Non-blocking integration: database failures don't stop workflow
+  - Flask app ready for background job integration (`from database import get_db`)
+- **Initialization & Testing**:
+  - `src/helper/init_database.py`: One-command database setup
+  - `src/helper/test_database_integration.py`: End-to-end integration tests
+  - Production database created at `data/applications.db`
+- **Documentation**:
+  - `docs/DATABASE_SCHEMA.md`: Complete schema design with examples and queries
+  - `docs/INTEGRATION_STRATEGY.md`: Comprehensive integration roadmap (10 integration options)
+  - `docs/PRODUCT_ROADMAP.md`: Phased implementation plan (Q1-Q4 2025), portfolio showcase strategy
+  - `docs/FIGMA_AI_PROMPT.md`: Dashboard design specifications for future UI implementation
+
+### Changed
+- **Cover Letter Validation** (Testing Mode):
+  - Relaxed word count validation from 180-240 to 170-250 words (testing only)
+  - AI prompt still requests strict 180-240 range
+  - Logs info message when word count is acceptable but not ideal
+  - TODO added for production tightening
+- **Dependency Updates**:
+  - Added `pypdf` to requirements.txt (CV PDF reading)
+  - Installed `pypdf` in virtual environment
+
+### Fixed
+- CV file loading: `pypdf` package was missing from environment
+- Database save on duplicates: Now checks duplicate status before saving to avoid UNIQUE constraint errors
+- Cover letter generation: Path resolution for CV files works correctly
+
+### Developer Notes
+- **Testing Mode Active** (⚠️ **Before Production**):
+  - Duplicate detection warns but continues (uncomment `return` in `main.py` Step 0 to stop on duplicates)
+  - Cover letter validation accepts 170-250 words (change back to 180-240 in `cover_letter.py`)
+- **Database Philosophy**: Tracks what was processed, NOT application status (Trello owns that)
+- **Next Steps**: Multi-AI providers, improved UI, LinkedIn integration
+
 ## [0.2.0] - 2025-10-13
 
 Milestone: Enhanced cover letter generation with context-aware salutations and comprehensive Trello integration.

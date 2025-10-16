@@ -6,6 +6,10 @@
 
 ## Not Started
 
+### Critical (Before Production)
+- [ ] **ACTIVATE DUPLICATE DETECTION**: Change `src/main.py` Step 0 to stop processing on duplicates (currently warns but continues for easier testing)
+- [ ] **TIGHTEN COVER LETTER VALIDATION**: Change `src/cover_letter.py` word count validation from 170-250 to strict 180-240 (currently relaxed for testing)
+
 ### Next Milestone (v0.1.x)
 - [ ] Merge feature/infrastructure-setup into develop/main and publish GitHub Release for v0.1.0 (use docs/RELEASE_NOTES_v0.1.0.md)
 - [ ] Retire legacy names cleanly

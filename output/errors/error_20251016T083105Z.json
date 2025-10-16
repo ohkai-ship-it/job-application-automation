@@ -1,0 +1,12 @@
+{
+  "id": "evt_20251016T083105Z",
+  "timestamp": "20251016T083105Z",
+  "severity": "error",
+  "message": "Scrape returned no data",
+  "exception_type": null,
+  "stack": null,
+  "context": {
+    "url": "https://www.stepstone.de/stellenangebote--Product-Manager-Digital-Workplace-m-w-d-Stuttgart-STRABAG-AG--11880434-inline.html"
+  },
+  "pid": 6780
+}

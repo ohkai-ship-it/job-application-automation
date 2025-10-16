@@ -12,11 +12,13 @@ from scraper import scrape_stepstone_job, save_to_json
 from trello_connect import TrelloConnect
 from cover_letter import CoverLetterGenerator
 from docx_generator import WordCoverLetterGenerator
+from database import get_db
 from utils.env import load_env, get_str, validate_env
 from utils.log_config import get_logger
 from utils.error_reporting import report_error
 import json
 from datetime import datetime
+import time
 
 # Validate environment at startup (allow skipping in tests)
 skip_env = os.getenv('SKIP_ENV_VALIDATION', '0') == '1'
@@ -42,7 +44,8 @@ from typing import Any, Dict, List, Optional
 def process_job_posting(
     url: str,
     generate_cover_letter: bool = True,
-    generate_pdf: bool = False  # Disabled by default to save time for manual edits
+    generate_pdf: bool = False,  # Disabled by default to save time for manual edits
+    skip_duplicate_check: bool = False  # Allow skipping duplicate check for testing
 ) -> Dict[str, Any]:
     """
     Complete workflow: Scrape job posting, create Trello card, generate cover letter and PDF
@@ -51,6 +54,7 @@ def process_job_posting(
         url (str): Stepstone job posting URL
         generate_cover_letter (bool): Whether to generate a cover letter
         generate_pdf (bool): Whether to convert to PDF (default: False, as manual edits are needed)
+        skip_duplicate_check (bool): Skip duplicate detection (for testing/re-processing)
         
     Returns:
         dict: Result with status and data
@@ -60,6 +64,37 @@ def process_job_posting(
     logger.info("JOB APPLICATION AUTOMATION")
     logger.info("%s", "=" * 80)
     logger.info("Processing: %s", url)
+    
+    # Step 0: Check for duplicates
+    # TODO: PRODUCTION - Change this to stop processing on duplicate (return early)
+    # For now, we just warn but continue to make testing easier
+    if not skip_duplicate_check:
+        logger.info("STEP 0: Checking for duplicates...")
+        logger.info("%s", "-" * 80)
+        
+        db = get_db()
+        is_duplicate, existing_job = db.check_duplicate(url)
+        
+        if is_duplicate:
+            logger.warning("⚠️  DUPLICATE DETECTED!")
+            logger.warning("This job was already processed:")
+            logger.warning("  Company: %s", existing_job['company_name'])
+            logger.warning("  Job Title: %s", existing_job['job_title'])
+            logger.warning("  Processed: %s", existing_job['processed_at'])
+            if existing_job.get('trello_card_url'):
+                logger.warning("  Trello Card: %s", existing_job['trello_card_url'])
+            if existing_job.get('docx_file_path'):
+                logger.warning("  Cover Letter: %s", existing_job['docx_file_path'])
+            logger.warning("⚠️  CONTINUING ANYWAY (testing mode)")
+            logger.warning("⚠️  TODO: In production, this should stop processing!")
+            # PRODUCTION: Uncomment the following return statement
+            # return {
+            #     'status': 'duplicate',
+            #     'existing_job': existing_job,
+            #     'message': 'Job already processed. Use skip_duplicate_check=True to reprocess.'
+            # }
+        else:
+            logger.info("✓ No duplicate found, proceeding...")
     
     # Step 1: Scrape the job posting
     logger.info("STEP 1: Scraping job posting...")
@@ -281,6 +316,49 @@ def process_job_posting(
             import traceback
             logger.debug("Traceback:")
             logger.debug("%s", traceback.format_exc())
+    
+    # Save to database (after successful processing)
+    # In testing mode, we skip saving if it's a duplicate to avoid UNIQUE constraint errors
+    if not skip_duplicate_check:
+        logger.info("%s", "=" * 80)
+        logger.info("Saving to database...")
+        logger.info("%s", "-" * 80)
+        
+        try:
+            db = get_db()
+            
+            # Check if this is a duplicate before trying to save
+            is_duplicate, _ = db.check_duplicate(url)
+            
+            if is_duplicate:
+                logger.info("⚠️  Skipping database save - job already exists in database")
+                logger.info("    (This is expected in testing mode when processing duplicates)")
+            else:
+                # Extract AI metadata if available
+                ai_model = job_data.get('ai_model_used', 'gpt-4o-mini')
+                language_code = job_data.get('detected_language', 'de')
+                word_count = job_data.get('cover_letter_word_count', None)
+                generation_cost = job_data.get('ai_generation_cost', None)
+                
+                job_id = db.save_processed_job(
+                    source_url=url,
+                    company_name=job_data.get('company_name', 'Unknown'),
+                    job_title=job_data.get('job_title', 'Unknown'),
+                    trello_card_id=card.get('id'),
+                    trello_card_url=card.get('shortUrl'),
+                    docx_file_path=str(docx_file) if docx_file else None,
+                    ai_model=ai_model if generate_cover_letter else None,
+                    language=language_code if generate_cover_letter else None,
+                    word_count=word_count,
+                    generation_cost=generation_cost,
+                    cover_letter_text=cover_letter_text if generate_cover_letter else None
+                )
+                
+                logger.info("✓ Saved to database (job_id: %s)", job_id)
+            
+        except Exception as e:
+            logger.warning("Failed to save to database: %s", e)
+            # Non-critical error, continue anyway
     
     # Success!
     logger.info("%s", "=" * 80)

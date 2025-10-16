@@ -11,6 +11,7 @@ from pathlib import Path
 sys.path.append(os.path.dirname(__file__))
 
 from main import process_job_posting
+from database import get_db
 from utils.env import load_env, get_str, validate_env
 from utils.log_config import get_logger
 from utils.error_reporting import report_error
