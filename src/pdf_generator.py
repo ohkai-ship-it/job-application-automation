@@ -12,8 +12,20 @@ from reportlab.lib import colors
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.platypus.flowables import HRFlowable
+
 from datetime import datetime
 import os
+from typing import Dict, Any
+
+# Logging and error types
+try:
+    from .utils.log_config import get_logger
+    from .utils.errors import DocumentError
+except Exception:
+    import sys
+    sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+    from utils.log_config import get_logger
+    from utils.errors import DocumentError
 
 
 class CoverLetterPDF:
@@ -21,7 +33,7 @@ class CoverLetterPDF:
     Generates formatted cover letter PDFs matching your personal style
     """
     
-    def __init__(self):
+    def __init__(self) -> None:
         self.page_width, self.page_height = A4
         self.margin_left = 2.5 * cm
         self.margin_right = 2.5 * cm
@@ -46,8 +58,14 @@ class CoverLetterPDF:
             'text': colors.HexColor('#2C3E50'),         # Body text
             'light_gray': colors.HexColor('#95A5A6')   # Light gray for lines
         }
+        # logger and error types are imported at module level
     
-    def generate_pdf(self, cover_letter_text, job_data, output_path):
+    def generate_pdf(
+        self,
+        cover_letter_text: str,
+        job_data: Dict[str, Any],
+        output_path: str
+    ) -> str:
         """
         Generate a formatted PDF cover letter
         
@@ -59,13 +77,16 @@ class CoverLetterPDF:
         Returns:
             str: Path to generated PDF
         """
-        
-        print(f"\n--- Generating PDF ---")
-        print(f"Output: {output_path}")
-        
+        logger = get_logger(__name__)
+        logger.info("Generating PDF | out=%s", output_path)
+
         # Ensure directory exists
-        os.makedirs(os.path.dirname(output_path), exist_ok=True)
-        
+        try:
+            os.makedirs(os.path.dirname(output_path), exist_ok=True)
+        except Exception as e:
+            logger.error("Failed to prepare output directory for PDF %s: %s", output_path, e)
+            raise DocumentError(f"Failed to prepare output directory: {output_path}") from e
+
         # Create PDF document
         doc = SimpleDocTemplate(
             output_path,
@@ -75,26 +96,22 @@ class CoverLetterPDF:
             topMargin=self.margin_top,
             bottomMargin=self.margin_bottom
         )
-        
+
         # Container for PDF content
         story = []
-        
+
         # Define styles
         styles = self._create_styles()
-        
+
         # Detect language for proper greetings
         language = self._detect_language(cover_letter_text)
-        
+
         # Get job details
         company_name = job_data.get('company_name', 'Company')
         job_title = job_data.get('job_title', 'Position')
         company_address = job_data.get('company_address', '')
-        location = job_data.get('location', '')
         
         # Build the document
-        
-        # 1. Header: Company address (left, aligned with body) and Sender (right edge)
-        
         # Company address - no left padding, will align naturally with body text
         company_lines = [f"<b>{company_name}</b>"]
         if company_address:
@@ -105,12 +122,12 @@ class CoverLetterPDF:
                 for part in address_parts[:3]:  # Max 3 lines
                     if part.strip():
                         company_lines.append(part.strip())
-        
+
         # Build company address paragraphs
         company_paragraphs = []
         for line in company_lines:
             company_paragraphs.append(Paragraph(line, styles['recipient']))
-        
+
         # Sender info (right-aligned)
         sender_lines = [
             f"<b>{self.sender['name']}</b>",
@@ -119,7 +136,7 @@ class CoverLetterPDF:
             self.sender['address_line1'],
             self.sender['address_line2']
         ]
-        
+
         # Create sender as a mini-table (right-aligned text)
         sender_cell = []
         for i, line in enumerate(sender_lines):
@@ -127,7 +144,7 @@ class CoverLetterPDF:
                 sender_cell.append([Paragraph(line, styles['sender_name'])])
             else:
                 sender_cell.append([Paragraph(line, styles['sender_info'])])
-        
+
         sender_mini_table = Table(sender_cell, colWidths=[6*cm])
         sender_mini_table.setStyle(TableStyle([
             ('ALIGN', (0, 0), (-1, -1), 'RIGHT'),
@@ -137,7 +154,7 @@ class CoverLetterPDF:
             ('TOPPADDING', (0, 0), (-1, -1), 0),
             ('BOTTOMPADDING', (0, 0), (-1, -1), 1),
         ]))
-        
+
         # Place sender info at top right
         sender_wrapper = Table(
             [[Paragraph('', styles['normal']), sender_mini_table]],
@@ -151,17 +168,17 @@ class CoverLetterPDF:
             ('TOPPADDING', (0, 0), (-1, -1), 0),
             ('BOTTOMPADDING', (0, 0), (-1, -1), 0),
         ]))
-        
+
         story.append(sender_wrapper)
         story.append(Spacer(1, 0.5*cm))
-        
+
         # Company address - left-aligned, same as body text
         for para in company_paragraphs:
             story.append(para)
-        
+
         story.append(Spacer(1, 1*cm))
-        
-        # 2. Date (right-aligned, close to right border)
+
+        # Date (right-aligned, close to right border)
         today = datetime.now().strftime('%d.%m.%Y')
         date_table = Table(
             [[Paragraph('', styles['normal']), Paragraph(today, styles['date'])]],
@@ -176,26 +193,18 @@ class CoverLetterPDF:
         ]))
         story.append(date_table)
         story.append(Spacer(1, 1.5*cm))
-        
-        # 4. Subject line (bold, left-aligned)
-        if language == 'german':
-            subject = f"Bewerbung als {job_title}"
-        else:
-            subject = f"Application for {job_title}"
-        
+
+        # Subject line (bold, left-aligned)
+        subject = f"Bewerbung als {job_title}" if language == 'german' else f"Application for {job_title}"
         story.append(Paragraph(f"<b>{subject}</b>", styles['subject']))
         story.append(Spacer(1, 0.8*cm))
-        
-        # 5. Greeting
-        if language == 'german':
-            greeting = f"Hallo liebes {company_name}-Team,"
-        else:
-            greeting = f"Dear Hiring Team,"
-        
+
+        # Greeting
+        greeting = f"Hallo liebes {company_name}-Team," if language == 'german' else "Dear Hiring Team,"
         story.append(Paragraph(greeting, styles['greeting']))
         story.append(Spacer(1, 0.5*cm))
-        
-        # 6. Cover letter body (justified text, proper spacing)
+
+        # Cover letter body (justified text, proper spacing)
         paragraphs = cover_letter_text.split('\n\n')
         for i, para in enumerate(paragraphs):
             if para.strip():
@@ -203,43 +212,36 @@ class CoverLetterPDF:
                 # Add spacing between paragraphs
                 if i < len(paragraphs) - 1:
                     story.append(Spacer(1, 0.4*cm))
-        
+
         story.append(Spacer(1, 0.8*cm))
-        
-        # 7. Closing
-        if language == 'german':
-            closing = "Mit freundlichen Grüßen,"
-        else:
-            closing = "Best regards,"
-        
+
+        # Closing
+        closing = "Mit freundlichen Grüßen," if language == 'german' else "Best regards,"
         story.append(Paragraph(closing, styles['closing']))
         story.append(Spacer(1, 1.5*cm))
-        
-        # 8. Signature
+
+        # Signature
         story.append(Paragraph(f"<b>{self.sender['name']}</b>", styles['signature']))
-        
-        # 9. Attachments
+
+        # Attachments
         story.append(Spacer(1, 1.5*cm))
-        if language == 'german':
-            attachments = "<i>Anlagen: Deckblatt · Lebenslauf · Zeugnisse</i>"
-        else:
-            attachments = "<i>Attachments: Cover Page · Resume · References</i>"
-        
+        attachments = "<i>Anlagen: Deckblatt · Lebenslauf · Zeugnisse</i>" if language == 'german' else "<i>Attachments: Cover Page · Resume · References</i>"
         story.append(Paragraph(attachments, styles['attachments']))
-        
-        # Add LinkedIn at bottom
+
+        # LinkedIn at bottom
         story.append(Spacer(1, 0.3*cm))
         story.append(Paragraph(f"<i>{self.sender['linkedin']}</i>", styles['attachments']))
-        
+
         # Build PDF
-        doc.build(story)
-        
-        print(f"✓ PDF generated successfully")
-        print(f"  File size: {os.path.getsize(output_path) / 1024:.1f} KB")
-        
-        return output_path
+        try:
+            doc.build(story)
+            logger.info("PDF generated: %s", output_path)
+            return output_path
+        except Exception as e:
+            logger.error("Failed to generate PDF %s: %s", output_path, e)
+            raise DocumentError(f"Failed to generate PDF: {output_path}") from e
     
-    def _create_styles(self):
+    def _create_styles(self) -> Dict[str, ParagraphStyle]:
         """Create custom paragraph styles"""
         
         styles = {}
@@ -253,8 +255,6 @@ class CoverLetterPDF:
             textColor=self.colors['primary'],
             alignment=TA_LEFT
         )
-        
-        # Sender contact info
         styles['sender_info'] = ParagraphStyle(
             'SenderInfo',
             fontName='Helvetica',
@@ -349,7 +349,7 @@ class CoverLetterPDF:
         
         return styles
     
-    def _detect_language(self, text):
+    def _detect_language(self, text: str) -> str:
         """Simple language detection"""
         german_words = ['und', 'der', 'die', 'das', 'ich', 'bei', 'mit', 'für']
         count = sum(1 for word in german_words if word in text.lower())

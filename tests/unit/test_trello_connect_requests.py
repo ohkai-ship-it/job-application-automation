@@ -1,0 +1,77 @@
+import json
+from typing import Any, Dict
+import types
+
+import pytest
+
+from src.trello_connect import TrelloConnect
+
+
+class DummyResponse:
+    def __init__(self, status_code: int, payload: Dict[str, Any] | None = None, text: str = ""):
+        self.status_code = status_code
+        self._payload = payload or {}
+        self.text = text or json.dumps(self._payload)
+
+    def json(self) -> Dict[str, Any]:
+        return self._payload
+
+
+def sample_job_data() -> Dict[str, Any]:
+    return {
+        'company_name': 'Acme Inc.',
+        'job_title': 'Senior Engineer',
+        'job_description': 'We are looking for...',
+        'location': 'Remote',
+        'source_url': 'https://example.com/job/123'
+    }
+
+
+def test_create_card_from_job_data_success(monkeypatch: pytest.MonkeyPatch):
+    calls: dict[str, Any] = {}
+    card_creation_call = {}
+
+    def fake_requester(method: str, url: str, **kwargs: Any):
+        # kwargs may include params/json/data
+        calls['url'] = url
+        calls['params'] = kwargs.get('params', {})
+        
+        # Capture the card creation call specifically
+        if url.endswith('/cards'):
+            card_creation_call['url'] = url
+            card_creation_call['params'] = kwargs.get('params', {})
+        
+        # Simulate Trello success payload
+        return DummyResponse(200, payload={'id': 'card123', 'shortUrl': 'https://trello.com/c/abc123'})
+
+    # Execute
+    tc = TrelloConnect(requester=fake_requester)
+    result = tc.create_card_from_job_data(sample_job_data())
+
+    # Assert
+    assert result is not None
+    # Check the card creation call (not the last call which might be custom field setting)
+    assert card_creation_call['url'].endswith('/cards')
+    assert card_creation_call['params']['idList'] == tc.leads_list_id
+    # New format: "[Company] Title (Location)"
+    assert card_creation_call['params']['name'] == '[Acme Inc.] Senior Engineer (Remote)'
+    assert 'desc' in card_creation_call['params'] and isinstance(card_creation_call['params']['desc'], str)
+    assert card_creation_call['params']['pos'] == 'top'
+    # Auth params included
+    assert card_creation_call['params']['key'] == tc.api_key
+    assert card_creation_call['params']['token'] == tc.token
+
+
+def test_create_card_from_job_data_failure(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture):
+    def fake_requester(method: str, url: str, **kwargs: Any):
+        return DummyResponse(401, text='unauthorized')
+
+    tc = TrelloConnect(requester=fake_requester)
+    result = tc.create_card_from_job_data(sample_job_data())
+
+    # Should return None on failure
+    assert result is None
+
+    # Our implementation prints an error line; capture to make sure we at least emit something helpful
+    out, err = capsys.readouterr()
+    assert 'Failed to create Trello card' in out

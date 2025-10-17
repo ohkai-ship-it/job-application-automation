@@ -1,25 +1,41 @@
 import requests
-from bs4 import BeautifulSoup
+from bs4 import BeautifulSoup, Tag
 from datetime import datetime
 import json
 import re
+from pathlib import Path
+from typing import Optional, Dict, Any, Tuple, List, Union
+try:
+    from .utils.log_config import get_logger
+    from .utils.http_utils import request_with_retries
+    from .utils.errors import ScraperError
+except Exception:
+    import os, sys
+    sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+    from utils.log_config import get_logger
+    from utils.http_utils import request_with_retries
+    from utils.errors import ScraperError
 
+# Type aliases for clarity
+JobData = Dict[str, Any]
+Address = Dict[str, str]
+JsonLD = Dict[str, Any]
 
-def clean_job_title(title):
+def clean_job_title(title: Optional[str]) -> Optional[str]:
     """
     Remove gender markers from job titles
     
     Args:
-        title (str): Original job title
+        title: Original job title
         
     Returns:
-        str: Cleaned job title
+        Cleaned job title or None if input was None
     """
     if not title:
         return title
     
     # Common gender markers to remove
-    gender_patterns = [
+    gender_patterns: List[str] = [
         r'\(m/w/d\)', r'\(w/m/d\)', r'\(d/m/w\)',
         r'\(m/f/d\)', r'\(f/m/d\)', r'\(gn\)',
         r'\(m/w\)', r'\(w/m\)',
@@ -40,15 +56,28 @@ def clean_job_title(title):
     return cleaned
 
 
-def split_address(address_dict):
+def scrape_stepstone_job(url: str) -> Optional[JobData]:
+    """
+    Scrape job posting data from Stepstone
+    
+    Args:
+        url: URL of the Stepstone job posting
+        
+    Returns:
+        Dictionary containing job data or None if scraping failed
+    """
+
+
+
+def split_address(address_dict: Address) -> Tuple[str, str]:
     """
     Split address into two lines for letter formatting
     
     Args:
-        address_dict (dict): Address dictionary from JSON-LD
+        address_dict: Address dictionary containing street, postal code, city
         
     Returns:
-        tuple: (line1, line2) where line1 is street, line2 is postal/city
+        Tuple of (line1, line2) where line1 is street and line2 is postal code + city
     """
     line1 = address_dict.get('streetAddress', '')
     
@@ -64,15 +93,120 @@ def split_address(address_dict):
     return (line1, line2)
 
 
-def scrape_stepstone_job(url):
+def extract_company_address_from_description(description: str, company_name: str) -> Optional[Dict[str, str]]:
+    """
+    Extract company address from job description text.
+    
+    Many job postings include the company address at the end under sections like:
+    - "Weitere Informationen" (DE)
+    - "Additional Information" (EN)
+    - Company name followed by street and postal code
+    
+    Prioritizes addresses found in "Weitere Informationen" or "Additional Information" sections.
+    
+    Args:
+        description: Full job description text
+        company_name: Company name to look for
+        
+    Returns:
+        Dictionary with 'line1' (street) and 'line2' (postal + city) or None
+    """
+    if not description or not company_name:
+        return None
+    
+    # Look for address patterns after the company name
+    # Typical format:
+    # Company Name
+    # Street Number
+    # Postal Code City
+    
+    lines = description.split('\n')
+    
+    # Priority 1: Look in "Weitere Informationen" or "Additional Information" sections
+    priority_sections = ['weitere informationen', 'additional information', 'contact information', 'kontaktinformationen']
+    in_priority_section = False
+    priority_section_start = -1
+    
+    for i, line in enumerate(lines):
+        line_lower = line.lower().strip()
+        if any(section in line_lower for section in priority_sections):
+            in_priority_section = True
+            priority_section_start = i
+            break
+    
+    # Helper function to extract address from a range of lines
+    def find_address_after_company(start_idx, end_idx=None):
+        if end_idx is None:
+            end_idx = len(lines)
+        
+        for i in range(start_idx, min(end_idx, len(lines))):
+            line = lines[i]
+            if company_name.lower() in line.lower():
+                # Check the next few lines for address patterns
+                remaining_lines = lines[i+1:min(i+4, end_idx)]
+                
+                street = None
+                postal_city = None
+                
+                for next_line in remaining_lines:
+                    next_line = next_line.strip()
+                    if not next_line:
+                        continue
+                    
+                    # Skip URLs
+                    if next_line.startswith('http'):
+                        continue
+                    
+                    # German postal code pattern: 5 digits followed by city name
+                    postal_match = re.match(r'^(\d{5})\s+(.+)$', next_line)
+                    if postal_match:
+                        postal_city = next_line
+                        break
+                
+                    # Street pattern: contains letters, numbers, and common street suffixes
+                    # Examples: "Philipp-Reis-Straße 4", "Bahnhofstraße 5", "Main Street 123"
+                    street_patterns = [
+                        r'.*(?:straße|strasse|weg|platz|allee|ring|gasse|str\.|street|avenue|road|drive|lane).*\d+',
+                        r'^[A-Za-zäöüÄÖÜß\-\s]+\d+',  # Generic: text followed by number
+                    ]
+                    
+                    for pattern in street_patterns:
+                        if re.search(pattern, next_line, re.IGNORECASE):
+                            street = next_line
+                            break
+                
+                # If we found both street and postal_city, we have a complete address
+                if street and postal_city:
+                    return {
+                        'line1': street,
+                        'line2': postal_city
+                    }
+        
+        return None
+    
+    # Try priority section first (Weitere Informationen, etc.)
+    if in_priority_section:
+        address = find_address_after_company(priority_section_start, len(lines))
+        if address:
+            return address
+    
+    # Fallback: search entire document
+    address = find_address_after_company(0, len(lines))
+    if address:
+        return address
+    
+    return None
+
+
+def scrape_stepstone_job(url: str) -> Optional[JobData]:
     """
     Scrapes a Stepstone job posting and extracts key information.
     
     Args:
-        url (str): The URL of the Stepstone job posting
+        url: The URL of the Stepstone job posting
         
     Returns:
-        dict: Dictionary containing extracted job information
+        Dictionary containing extracted job information or None if scraping failed
     """
     
     # Initialize result dictionary
@@ -99,6 +233,8 @@ def scrape_stepstone_job(url):
         'source_url': url
     }
     
+    logger = get_logger(__name__)
+
     try:
         # Set headers to mimic a real browser
         headers = {
@@ -106,24 +242,31 @@ def scrape_stepstone_job(url):
             'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
             'Accept-Language': 'de-DE,de;q=0.9,en-US;q=0.8,en;q=0.7',
         }
-        
-        # Fetch the page
-        print(f"Fetching URL: {url}")
-        response = requests.get(url, headers=headers, timeout=10)
-        response.raise_for_status()
-        
+
+        # Fetch the page with retries
+        logger.info("Fetching URL: %s", url)
+        try:
+            response = request_with_retries('GET', url, headers=headers, timeout=10)
+        except requests.HTTPError as e:
+            status = getattr(getattr(e, 'response', None), 'status_code', 'unknown')
+            text = getattr(getattr(e, 'response', None), 'text', '')
+            logger.error("HTTP error fetching %s (status %s): %s", url, status, str(e))
+            raise ScraperError(f"HTTP {status} for {url}") from e
+        except requests.RequestException as e:
+            logger.error("Network error fetching %s: %s", url, e)
+            raise ScraperError(f"Network error for {url}") from e
+
         # Parse HTML
         soup = BeautifulSoup(response.content, 'lxml')
-        
-        print("✓ Page fetched successfully!")
-        print("\n--- Extracting Data ---")
+
+        logger.debug("Page fetched successfully. Extracting data...")
         
         # Extract Stepstone Job ID from URL
         # URL format: ...--JobTitle--JOBID-inline.html
         stepstone_id_match = re.search(r'--(\d+)-inline\.html', url)
         if stepstone_id_match:
             job_data['stepstone_job_id'] = stepstone_id_match.group(1)
-            print(f"✓ Stepstone Job ID: {job_data['stepstone_job_id']}")
+            logger.debug("Stepstone Job ID: %s", job_data['stepstone_job_id'])
         
         # Extract from JSON-LD (most reliable!)
         json_ld_data = None
@@ -131,7 +274,7 @@ def scrape_stepstone_job(url):
         if json_ld_script and json_ld_script.string:
             try:
                 json_ld_data = json.loads(json_ld_script.string)
-                print("✓ Found JSON-LD structured data!")
+                logger.debug("Found JSON-LD structured data")
             except:
                 pass
         
@@ -146,9 +289,9 @@ def scrape_stepstone_job(url):
                 job_data['job_title_clean'] = clean_job_title(job_data['job_title'])
         
         if job_data['job_title']:
-            print(f"✓ Job Title: {job_data['job_title']}")
+            logger.debug("Job Title: %s", job_data['job_title'])
             if job_data['job_title_clean'] and job_data['job_title'] != job_data['job_title_clean']:
-                print(f"  Clean: {job_data['job_title_clean']}")
+                logger.debug("  Clean: %s", job_data['job_title_clean'])
         
         # 2. Company Name
         if json_ld_data and 'hiringOrganization' in json_ld_data:
@@ -159,7 +302,7 @@ def scrape_stepstone_job(url):
                 job_data['company_name'] = company_tag.get_text(strip=True)
         
         if job_data['company_name']:
-            print(f"✓ Company: {job_data['company_name']}")
+            logger.debug("Company: %s", job_data['company_name'])
         
         # 3. Location
         if json_ld_data and 'jobLocation' in json_ld_data:
@@ -175,7 +318,7 @@ def scrape_stepstone_job(url):
                 job_data['location'] = location_tag.get_text(strip=True)
         
         if job_data['location']:
-            print(f"✓ Location: {job_data['location']}")
+            logger.debug("Location: %s", job_data['location'])
         
         # 4. Work Mode
         work_type_tag = soup.find(attrs={'data-at': 'metadata-work-type'})
@@ -188,12 +331,12 @@ def scrape_stepstone_job(url):
                     job_data['work_mode'] = 'remote/homeoffice'
             else:
                 job_data['work_mode'] = 'office'
-            print(f"✓ Work Mode: {job_data['work_mode']}")
+            logger.debug("Work Mode: %s", job_data['work_mode'])
         
         # 5. Publication Date
         if json_ld_data and 'datePosted' in json_ld_data:
             job_data['publication_date'] = json_ld_data['datePosted']
-            print(f"✓ Publication Date: {job_data['publication_date']}")
+            logger.debug("Publication Date: %s", job_data['publication_date'])
         
         # 6. Job Description
         if json_ld_data and 'description' in json_ld_data:
@@ -201,7 +344,7 @@ def scrape_stepstone_job(url):
             desc_soup = BeautifulSoup(desc_html, 'lxml')
             job_data['job_description'] = desc_soup.get_text(separator='\n', strip=True)
             desc_preview = job_data['job_description'][:200] + "..."
-            print(f"✓ Job Description: {desc_preview}")
+            logger.debug("Job Description preview: %s", desc_preview)
         
         # 6b. Extract Company Reference Number from job description
         # Look for common patterns: "Referenznummer:", "Job-ID:", "Kennziffer:", etc.
@@ -222,7 +365,7 @@ def scrape_stepstone_job(url):
                 match = re.search(pattern, job_data['job_description'], re.IGNORECASE)
                 if match:
                     job_data['company_job_reference'] = match.group(1).strip()
-                    print(f"✓ Company Reference Number: {job_data['company_job_reference']}")
+                    logger.debug("Company Reference Number: %s", job_data['company_job_reference'])
                     break
         
         # Also check if it's in JSON-LD
@@ -232,32 +375,49 @@ def scrape_stepstone_job(url):
                 if isinstance(ref_value, dict):
                     ref_value = ref_value.get('value', '')
                 job_data['company_job_reference'] = str(ref_value)
-                print(f"✓ Company Reference (from JSON-LD): {job_data['company_job_reference']}")
+                logger.debug("Company Reference (from JSON-LD): %s", job_data['company_job_reference'])
         
         # 7. Company Address
-        if json_ld_data and 'jobLocation' in json_ld_data:
-            location_data = json_ld_data['jobLocation']
-            if isinstance(location_data, dict) and 'address' in location_data:
-                address = location_data['address']
-                address_parts = []
-                if 'streetAddress' in address:
-                    address_parts.append(address['streetAddress'])
-                if 'postalCode' in address:
-                    address_parts.append(address['postalCode'])
-                if 'addressLocality' in address:
-                    address_parts.append(address['addressLocality'])
-                if 'addressCountry' in address:
-                    address_parts.append(address['addressCountry'])
-                
-                if address_parts:
-                    job_data['company_address'] = ', '.join(address_parts)
-                    # Split into two lines
-                    lines = split_address(address)
-                    job_data['company_address_line1'] = lines[0]
-                    job_data['company_address_line2'] = lines[1]
-                    print(f"✓ Company Address: {job_data['company_address']}")
-                    print(f"  Line 1: {job_data['company_address_line1']}")
-                    print(f"  Line 2: {job_data['company_address_line2']}")
+        # Try to extract company address from job description text first
+        # (this is more reliable than jobLocation which often contains job location, not company HQ)
+        if job_data.get('job_description') and job_data.get('company_name'):
+            extracted_address = extract_company_address_from_description(
+                job_data['job_description'], 
+                job_data['company_name']
+            )
+            if extracted_address:
+                job_data['company_address_line1'] = extracted_address['line1']
+                job_data['company_address_line2'] = extracted_address['line2']
+                job_data['company_address'] = f"{extracted_address['line1']}, {extracted_address['line2']}"
+                logger.debug("Company Address (from job description): %s", job_data['company_address'])
+                logger.debug("  Line 1: %s", job_data['company_address_line1'])
+                logger.debug("  Line 2: %s", job_data['company_address_line2'])
+        
+        # Fallback: use jobLocation if no address found in description
+        if not job_data.get('company_address'):
+            if json_ld_data and 'jobLocation' in json_ld_data:
+                location_data = json_ld_data['jobLocation']
+                if isinstance(location_data, dict) and 'address' in location_data:
+                    address = location_data['address']
+                    address_parts = []
+                    if 'streetAddress' in address:
+                        address_parts.append(address['streetAddress'])
+                    if 'postalCode' in address:
+                        address_parts.append(address['postalCode'])
+                    if 'addressLocality' in address:
+                        address_parts.append(address['addressLocality'])
+                    if 'addressCountry' in address:
+                        address_parts.append(address['addressCountry'])
+                    
+                    if address_parts:
+                        job_data['company_address'] = ', '.join(address_parts)
+                        # Split into two lines
+                        lines = split_address(address)
+                        job_data['company_address_line1'] = lines[0]
+                        job_data['company_address_line2'] = lines[1]
+                        logger.debug("Company Address (from jobLocation fallback): %s", job_data['company_address'])
+                        logger.debug("  Line 1: %s", job_data['company_address_line1'])
+                        logger.debug("  Line 2: %s", job_data['company_address_line2'])
         
         # 8. Website Link
         real_company_website = None
@@ -269,7 +429,7 @@ def scrape_stepstone_job(url):
                 if 'stepstone.de' not in url_value:
                     real_company_website = url_value
                     job_data['website_link'] = url_value
-                    print(f"✓ Company Website: {job_data['website_link']}")
+                    logger.debug("Company Website: %s", job_data['website_link'])
         
         # Construct likely company website from company name
         if not real_company_website and job_data.get('company_name'):
@@ -281,7 +441,7 @@ def scrape_stepstone_job(url):
             company_clean = re.sub(r'[^a-z0-9]', '', company_clean)
             
             job_data['website_link'] = f"https://www.{company_clean}.de"
-            print(f"✓ Estimated Website: {job_data['website_link']}")
+            logger.debug("Estimated Website: %s", job_data['website_link'])
             real_company_website = job_data['website_link']
         
         # 9. Career Page Link - only set if we have a valid website
@@ -289,7 +449,7 @@ def scrape_stepstone_job(url):
             if 'stepstone.de' not in real_company_website:
                 base_url = real_company_website.rstrip('/')
                 job_data['career_page_link'] = f"{base_url}/karriere"
-                print(f"✓ Career Page (estimated): {job_data['career_page_link']}")
+                logger.debug("Career Page (estimated): %s", job_data['career_page_link'])
                 
         # 10. Direct Apply Link - look for "Jetzt bewerben" or "Apply now" buttons
         apply_buttons = soup.find_all(['a', 'button'], string=re.compile('jetzt bewerben|apply now|bewerben', re.I))
@@ -299,7 +459,7 @@ def scrape_stepstone_job(url):
                 # Skip if it's just a Stepstone internal link
                 if 'stepstone.de' not in href or '/go/' in href:
                     job_data['direct_apply_link'] = href if href.startswith('http') else f'https://{href}'
-                    print(f"✓ Direct Apply Link: {job_data['direct_apply_link']}")
+                    logger.debug("Direct Apply Link: %s", job_data['direct_apply_link'])
                     break
         
         # 11. Contact Information
@@ -310,33 +470,38 @@ def scrape_stepstone_job(url):
         emails = [e for e in emails if not any(x in e.lower() for x in ['beispiel', 'example', 'noreply'])]
         if emails:
             job_data['contact_person']['email'] = emails[0]
-            print(f"✓ Contact Email: {job_data['contact_person']['email']}")
+            logger.debug("Contact Email: %s", job_data['contact_person']['email'])
         
         # Phone
         phones = re.findall(r'\+?\d{2,4}[\s\-]?\(?\d{2,4}\)?[\s\-]?\d{3,4}[\s\-]?\d{3,4}', page_text)
         phones = [p for p in phones if len(p.replace(' ', '').replace('-', '')) > 8]
         if phones:
             job_data['contact_person']['phone'] = phones[0].strip()
-            print(f"✓ Contact Phone: {job_data['contact_person']['phone']}")
+            logger.debug("Contact Phone: %s", job_data['contact_person']['phone'])
         
-        print("\n✓ Scraping completed successfully!")
+        logger.info("Scraping completed successfully")
         return job_data
-        
-    except requests.exceptions.RequestException as e:
-        print(f"✗ Error fetching page: {e}")
+
+    except ScraperError:
+        # Already logged above
         return None
     except Exception as e:
-        print(f"✗ Error parsing page: {e}")
-        import traceback
-        traceback.print_exc()
+        from traceback import format_exc
+        logger.exception("Error parsing page %s: %s", url, e)
+        logger.debug("Traceback: %s", format_exc())
         return None
 
 
-def save_to_json(data, filename='job_data.json'):
-    """Save scraped data to JSON file"""
+def save_to_json(data: JobData, filename: Union[str, Path]) -> None:
+    """
+    Save scraped data to JSON file
+    
+    Args:
+        data: Job data dictionary to save
+        filename: Path to the output JSON file
+    """
     with open(filename, 'w', encoding='utf-8') as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
-    print(f"\n✓ Data saved to {filename}")
+        json.dump(data, f, indent=2, ensure_ascii=False)
 
 
 # Test function
