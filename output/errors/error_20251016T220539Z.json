@@ -1,0 +1,12 @@
+{
+  "id": "evt_20251016T220539Z",
+  "timestamp": "20251016T220539Z",
+  "severity": "error",
+  "message": "Scrape returned no data",
+  "exception_type": null,
+  "stack": null,
+  "context": {
+    "url": "https://www.linkedin.com/jobs/view/4308732682/?alternateChannel=search&eBP=CwEAAAGZ7qn6jQIx05KsI8f4Lau-MCuDT5qmSKbutbyDnHsAnPZCX_xeS-M2hQ5Ao93RrPj-yzrfPsFyD6yYpdPJXCfnHhm1DNZK8U1Qz24UrisMPNtnBKQVJCZbcWmDIZ0T3O1FNoA5ucrE2sUtRxV_gnx-GG2Pwcb7rJWUh3sBpnKsGzOH7jryeCsGAj3MSox60o68ddBbaBEbVPkqeLR_S-7i8A-aI1xs402GL5QaIO_Aj5yWC3s9N3rb-uLuQimCHT7P8y_LArvQXxktn8XKV57AO9G-HLc07QVgdRvUb0IFatVGZDAA1gt_DAiHEgVlVOAdyHfZu-I8MirjLBIh4sL-3svujtIKM1fXUqkaHykJdB6LMdsT9Zel2zchcPIBH2rgcG4xW4xSwq4lNP2BUHrlVoGNf4_NIDIWZOu_jxQLBPSPMnsH2oXdR_UcbakXrHHZDFFisU6_4vmOorVJWU80QfWokLPFMlNrwohMagYTqg&refId=340LikmapLF%2F5Nqdoj%2FwDg%3D%3D&trackingId=LxSCRkF25XNtYbdtCFLOkg%3D%3D"
+  },
+  "pid": 1984
+}

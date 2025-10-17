@@ -69,6 +69,7 @@ class TrelloConnect:
         # List/dropdown fields
         self.field_source_list = get_str('TRELLO_FIELD_QUELLE', default='')  # Quelle (Stepstone, LinkedIn, etc.)
         self.field_source_stepstone_option = get_str('TRELLO_FIELD_QUELLE_STEPSTONE', default='')  # Stepstone option ID
+        self.field_source_linkedin_option = get_str('TRELLO_FIELD_QUELLE_LINKEDIN', default='')  # LinkedIn option ID
         
         self.field_sprache = get_str('TRELLO_FIELD_SPRACHE', default='')  # Sprache (Language)
         self.field_sprache_de_de = get_str('TRELLO_FIELD_SPRACHE_DE_DE', default='')  # DE -> DE
@@ -307,13 +308,23 @@ class TrelloConnect:
             except Exception as e:
                 self.logger.warning("Error setting text field %s: %s", field_id, e)
         
-        # List/dropdown field: Quelle (Source) - set to "Stepstone" for Stepstone URLs
-        if self.field_source_list and self.field_source_stepstone_option:
+        # List/dropdown field: Quelle (Source) - set to "Stepstone" or "LinkedIn" based on URL
+        if self.field_source_list:
             source_url = job_data.get('source_url', '')
-            if 'stepstone' in source_url.lower():
+            source_option_id = None
+            source_name = None
+            
+            if 'stepstone' in source_url.lower() and self.field_source_stepstone_option:
+                source_option_id = self.field_source_stepstone_option
+                source_name = "Stepstone"
+            elif 'linkedin' in source_url.lower() and self.field_source_linkedin_option:
+                source_option_id = self.field_source_linkedin_option
+                source_name = "LinkedIn"
+            
+            if source_option_id:
                 try:
                     url = f"{self.base_url}/cards/{card_id}/customField/{self.field_source_list}/item"
-                    payload = {'idValue': self.field_source_stepstone_option}
+                    payload = {'idValue': source_option_id}
                     resp = self.requester(
                         'PUT',
                         url,
@@ -323,7 +334,7 @@ class TrelloConnect:
                     )
                     
                     if getattr(resp, 'status_code', 200) in (200, 201):
-                        self.logger.debug("Set source to Stepstone")
+                        self.logger.debug("Set source to %s", source_name)
                     else:
                         self.logger.warning("Failed to set source field: %s", resp.status_code)
                 except Exception as e:

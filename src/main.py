@@ -9,6 +9,7 @@ from pathlib import Path
 sys.path.append(os.path.dirname(__file__))
 
 from scraper import scrape_stepstone_job, save_to_json
+from linkedin_scraper import scrape_linkedin_job
 from trello_connect import TrelloConnect
 from cover_letter import CoverLetterGenerator
 from docx_generator import WordCoverLetterGenerator
@@ -40,6 +41,28 @@ OUTPUT_DIR = Path(get_str('OUTPUT_DIR', 'output'))
 
 
 from typing import Any, Dict, List, Optional
+
+
+def detect_job_source(url: str) -> str:
+    """
+    Detect whether a URL is from LinkedIn or Stepstone
+    
+    Args:
+        url (str): Job posting URL
+        
+    Returns:
+        str: Either 'linkedin' or 'stepstone'
+    """
+    url_lower = url.lower()
+    
+    if 'linkedin.com' in url_lower:
+        return 'linkedin'
+    elif 'stepstone' in url_lower:
+        return 'stepstone'
+    else:
+        # Default to stepstone for unknown URLs
+        logger.warning("Unknown job source for URL: %s (defaulting to stepstone)", url)
+        return 'stepstone'
 
 def process_job_posting(
     url: str,
@@ -100,7 +123,14 @@ def process_job_posting(
     logger.info("STEP 1: Scraping job posting...")
     logger.info("%s", "-" * 80)
     
-    job_data = scrape_stepstone_job(url)
+    # Detect source and use appropriate scraper
+    source = detect_job_source(url)
+    logger.info("Detected source: %s", source.upper())
+    
+    if source == 'linkedin':
+        job_data = scrape_linkedin_job(url)
+    else:
+        job_data = scrape_stepstone_job(url)
     
     if not job_data:
         logger.error("Failed to scrape job posting!")
@@ -459,14 +489,14 @@ def interactive_mode() -> None:
         choice = input("\nSelect option (1-3): ").strip()
         
         if choice == '1':
-            url = input("\nEnter Stepstone job URL: ").strip()
+            url = input("\nEnter job URL (Stepstone or LinkedIn): ").strip()
             if url:
                 process_job_posting(url)
             else:
                 logger.error("No URL provided!")
         
         elif choice == '2':
-            logger.info("Enter Stepstone URLs (one per line, empty line to finish):")
+            logger.info("Enter job URLs (Stepstone or LinkedIn, one per line, empty line to finish):")
             urls = []
             while True:
                 url = input().strip()
