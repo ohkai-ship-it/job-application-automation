@@ -146,7 +146,8 @@ def process() -> Response:
         'url': url,
         'progress': 0,
         'job_title': '',  # Will be populated after early scrape
-        'company_name': ''  # Will be populated after early scrape
+        'company_name': '',  # Will be populated after early scrape
+        'paused': False  # Pause flag
     }
     
     # Process in background thread with settings
@@ -197,28 +198,41 @@ def process_in_background(job_id: str, url: str, create_trello_card: bool = True
             # Simulate progress from 25% to 59% during Trello phase
             for p in range(25, 60, 5):
                 time.sleep(0.3)
+                # Check pause flag frequently
+                while processing_status[job_id].get('paused', False):
+                    time.sleep(0.1)
                 if processing_status[job_id]['progress'] < 60:
                     processing_status[job_id]['progress'] = p
             
             # Simulate cover letter phase (60-79%)
             time.sleep(0.1)
+            while processing_status[job_id].get('paused', False):
+                time.sleep(0.1)
             if processing_status[job_id]['progress'] < 80:
                 processing_status[job_id]['message'] = 'Generating cover letter...'
                 processing_status[job_id]['progress'] = 60
             
             for p in range(65, 80, 5):
                 time.sleep(0.3)
+                # Check pause flag frequently
+                while processing_status[job_id].get('paused', False):
+                    time.sleep(0.1)
                 if processing_status[job_id]['progress'] < 80:
                     processing_status[job_id]['progress'] = p
             
             # Simulate document phase (80-99%)
             time.sleep(0.1)
+            while processing_status[job_id].get('paused', False):
+                time.sleep(0.1)
             if processing_status[job_id]['progress'] < 100:
                 processing_status[job_id]['message'] = 'Creating documents...'
                 processing_status[job_id]['progress'] = 80
             
             for p in range(85, 100, 5):
                 time.sleep(0.3)
+                # Check pause flag frequently
+                while processing_status[job_id].get('paused', False):
+                    time.sleep(0.1)
                 if processing_status[job_id]['progress'] < 100:
                     processing_status[job_id]['progress'] = p
         
@@ -287,6 +301,41 @@ def status(job_id: str) -> Response:
         return jsonify({'error': 'Job not found'}), 404
     
     return jsonify(processing_status[job_id])
+
+@app.route('/pause/<job_id>', methods=['POST'])
+def pause_job(job_id: str) -> Response:
+    """Pause or resume a job"""
+    if job_id not in processing_status:
+        return jsonify({'error': 'Job not found'}), 404
+    
+    # Toggle pause state
+    processing_status[job_id]['paused'] = not processing_status[job_id].get('paused', False)
+    is_paused = processing_status[job_id]['paused']
+    
+    if is_paused:
+        processing_status[job_id]['message'] = 'Paused'
+    else:
+        processing_status[job_id]['message'] = 'Resuming...'
+    
+    logger.info(f"[{job_id}] Job {'paused' if is_paused else 'resumed'}")
+    return jsonify({'paused': is_paused})
+
+@app.route('/cancel', methods=['POST'])
+def cancel_all() -> Response:
+    """Cancel all jobs and clean up database"""
+    try:
+        # Clear all processing status entries
+        processing_status.clear()
+        
+        # Clear database
+        db = get_db()
+        db.clear_all()
+        
+        logger.info("All jobs cancelled and database cleaned")
+        return jsonify({'success': True, 'message': 'All jobs cancelled and database cleaned'})
+    except Exception as e:
+        logger.exception("Error cancelling jobs: %s", e)
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/download/<path:filename>')
 def download(filename: str) -> Response:

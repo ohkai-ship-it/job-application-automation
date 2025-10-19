@@ -1,0 +1,14 @@
+{
+  "id": "evt_20251018T153814Z",
+  "timestamp": "20251018T153814Z",
+  "severity": "error",
+  "message": "Cover letter generation failed",
+  "exception_type": "AIGenerationError",
+  "stack": "Traceback (most recent call last):\n  File \"C:\\Users\\Kai\\OneDrive\\Documents\\04 Themen\\Tech\\Programmierung\\VS Code\\Python\\job-application-automation\\src\\main.py\", line 249, in process_job_posting\n    cover_letter_body = ai_generator.generate_cover_letter(job_data)\n  File \"C:\\Users\\Kai\\OneDrive\\Documents\\04 Themen\\Tech\\Programmierung\\VS Code\\Python\\job-application-automation\\src\\cover_letter.py\", line 259, in generate_cover_letter\n    raise AIGenerationError(f\"Cover letter length out of bounds: {word_count} words\")\nutils.errors.AIGenerationError: Cover letter length out of bounds: 163 words\n",
+  "context": {
+    "company": "Optik Unbehauen GmbH",
+    "title": "Augenoptiker (m/w/d) oder Augenoptikermeister (m/w/d)",
+    "url": "https://www.stepstone.de/stellenangebote--Augenoptiker-m-w-d-oder-Augenoptikermeister-m-w-d-Fuerth-bei-Nuernberg-Optik-Unbehauen-GmbH--12860883-inline.html?rltr=22_22_25_seorl_m_0_0_0_0_1_0"
+  },
+  "pid": 7744
+}

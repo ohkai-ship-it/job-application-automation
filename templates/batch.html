@@ -153,6 +153,18 @@
             border-color: var(--primary);
         }
         
+        .btn-warning {
+            background: #f59e0b;
+            color: white;
+            border: 2px solid #f59e0b;
+            flex: 0 1 auto;
+        }
+        
+        .btn-warning:hover {
+            background: #d97706;
+            border-color: #d97706;
+        }
+        
         .btn:disabled {
             opacity: 0.5;
             cursor: not-allowed;
@@ -562,8 +574,13 @@
                         <button class="btn btn-primary" id="processAllBtn" onclick="processAllJobs()">
                             ▶ Process All Jobs
                         </button>
-                        <button class="btn btn-secondary" onclick="clearInput()">Clear All</button>
-                        <button class="btn btn-secondary" onclick="pasteFromClipboard()">📋 Paste</button>
+                        <button class="btn btn-warning" id="pauseBtn" onclick="togglePause()" style="display: none;">
+                            ⏸ Pause
+                        </button>
+                        <button class="btn btn-secondary" id="clearAllBtn" onclick="clearInput()">Clear All</button>
+                        <button class="btn btn-danger" id="cancelAllBtn" onclick="cancelAll()" style="display: none;">
+                            ✕ Cancel All
+                        </button>
                     </div>
                 </div>
                 
@@ -719,6 +736,54 @@
             document.getElementById('progressSection').style.display = 'none';
         }
         
+        // Toggle pause/resume
+        function togglePause() {
+            const pauseBtn = document.getElementById('pauseBtn');
+            if (paused) {
+                paused = false;
+                pauseBtn.textContent = '⏸ Pause';
+                processNextJob();
+            } else {
+                paused = true;
+                pauseBtn.textContent = '▶ Resume';
+            }
+        }
+        
+        // Cancel all jobs
+        async function cancelAll() {
+            if (!confirm('Are you sure you want to cancel all jobs and clean up the database?')) {
+                return;
+            }
+            
+            processing = false;
+            paused = false;
+            queue = [];
+            
+            try {
+                const response = await fetch('/cancel', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                
+                if (response.ok) {
+                    console.log('All jobs cancelled and database cleaned');
+                }
+            } catch (error) {
+                console.error('Error cancelling jobs:', error);
+            }
+            
+            // Reset UI
+            document.getElementById('urlInput').value = '';
+            document.getElementById('urlCount').textContent = '0';
+            document.getElementById('progressSection').style.display = 'none';
+            document.getElementById('processAllBtn').style.display = 'inline-block';
+            document.getElementById('pauseBtn').style.display = 'none';
+            document.getElementById('cancelAllBtn').style.display = 'none';
+            document.getElementById('clearAllBtn').disabled = false;
+            updateQueueDisplay();
+            loadRecentFiles();
+        }
+        
         // Process all jobs
         function processAllJobs() {
             const urls = document.getElementById('urlInput').value.trim().split('\n').filter(url => url.trim().length > 0);
@@ -743,18 +808,30 @@
             updateStats();
             updateQueueDisplay();
             document.getElementById('progressSection').style.display = 'block';
-            document.getElementById('processAllBtn').disabled = true;
+            document.getElementById('processAllBtn').style.display = 'none';
+            document.getElementById('pauseBtn').style.display = 'inline-block';
+            document.getElementById('pauseBtn').textContent = '⏸ Pause';
+            document.getElementById('cancelAllBtn').style.display = 'inline-block';
+            document.getElementById('clearAllBtn').disabled = true;
             
             processNextJob();
         }
         
         // Process next job
         async function processNextJob() {
+            // Check if paused
+            if (paused) {
+                return;
+            }
+            
             const job = queue.find(j => j.status === 'queued');
             
             if (!job) {
                 processing = false;
-                document.getElementById('processAllBtn').disabled = false;
+                document.getElementById('processAllBtn').style.display = 'inline-block';
+                document.getElementById('pauseBtn').style.display = 'none';
+                document.getElementById('cancelAllBtn').style.display = 'none';
+                document.getElementById('clearAllBtn').disabled = false;
                 loadRecentFiles(); // Final refresh after all jobs done
                 return;
             }
@@ -843,8 +920,24 @@
         
         // Check job status
         async function checkJobStatus(job) {
+            // Don't continue polling if paused
+            if (paused) {
+                return;
+            }
+            
             try {
                 const response = await fetch(`/status/${job.jobId}`);
+                
+                // If job was cancelled (404), stop polling
+                if (response.status === 404) {
+                    console.log(`[${job.id}] Job not found (404) - stopping polling`);
+                    return;
+                }
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+                
                 const data = await response.json();
                 console.log(`[${job.id}] Status:`, data); // DEBUG
                 
@@ -879,11 +972,15 @@
                     }
                     updateQueueDisplay();
                     updateProgressBar();
-                    setTimeout(() => checkJobStatus(job), 1000);
+                    setTimeout(() => {
+                        if (!paused) checkJobStatus(job);
+                    }, 1000);
                 }
             } catch (error) {
                 console.error('Error checking status:', error);
-                setTimeout(() => checkJobStatus(job), 2000);
+                setTimeout(() => {
+                    if (!paused) checkJobStatus(job);
+                }, 2000);
             }
         }
         

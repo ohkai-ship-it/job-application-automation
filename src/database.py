@@ -373,6 +373,29 @@ class ApplicationDB:
             
             return [dict(row) for row in cursor.fetchall()]
     
+    def clear_all(self) -> None:
+        """
+        Clear all records from the database (used for cancellation/cleanup).
+        
+        Deletes all entries from both processed_jobs and generation_metadata tables.
+        WARNING: This is destructive and cannot be undone.
+        """
+        try:
+            with self._get_connection() as conn:
+                cursor = conn.cursor()
+                
+                # Delete all generation metadata (will cascade from processed_jobs deletion)
+                cursor.execute("DELETE FROM generation_metadata")
+                
+                # Delete all processed jobs
+                cursor.execute("DELETE FROM processed_jobs")
+                
+                conn.commit()
+                logger.info("Database cleared: all records removed")
+        except Exception as e:
+            logger.error(f"Error clearing database: {e}")
+            raise
+    
     def get_stats(self) -> Dict[str, Any]:
         """
         Get overall database statistics.
