@@ -68,6 +68,7 @@ def process_job_posting(
     url: str,
     generate_cover_letter: bool = True,
     generate_pdf: bool = False,  # Disabled by default to save time for manual edits
+    create_trello_card: bool = True,  # Allow disabling Trello card creation from settings
     skip_duplicate_check: bool = False  # Allow skipping duplicate check for testing
 ) -> Dict[str, Any]:
     """
@@ -77,6 +78,7 @@ def process_job_posting(
         url (str): Stepstone job posting URL
         generate_cover_letter (bool): Whether to generate a cover letter
         generate_pdf (bool): Whether to convert to PDF (default: False, as manual edits are needed)
+        create_trello_card (bool): Whether to create a Trello card (default: True)
         skip_duplicate_check (bool): Skip duplicate detection (for testing/re-processing)
         
     Returns:
@@ -154,22 +156,28 @@ def process_job_posting(
     # filename = DATA_DIR / f"scraped_job_{timestamp}.json"
     # save_to_json(job_data, str(filename))
     
-    # Step 2: Create Trello card
-    logger.info("%s", "=" * 80)
-    logger.info("STEP 2: Creating Trello card...")
-    logger.info("%s", "-" * 80)
-    
-    trello = TrelloConnect()
-    card = trello.create_card_from_job_data(job_data)
-    
-    if not card:
-        logger.error("Failed to create Trello card!")
-        return {
-            'status': 'partial',
-            'step': 'trello',
-            'job_data': job_data,
-            'error': 'Failed to create card'
-        }
+    # Step 2: Create Trello card (if enabled)
+    card = None
+    if create_trello_card:
+        logger.info("%s", "=" * 80)
+        logger.info("STEP 2: Creating Trello card...")
+        logger.info("%s", "-" * 80)
+        
+        trello = TrelloConnect()
+        card = trello.create_card_from_job_data(job_data)
+        
+        if not card:
+            logger.error("Failed to create Trello card!")
+            return {
+                'status': 'partial',
+                'step': 'trello',
+                'job_data': job_data,
+                'error': 'Failed to create card'
+            }
+    else:
+        logger.info("%s", "=" * 80)
+        logger.info("STEP 2: Skipping Trello card creation (disabled in settings)")
+        logger.info("%s", "-" * 80)
     
     # Step 3: Generate cover letter (optional)
     cover_letter_text = None
@@ -399,7 +407,10 @@ def process_job_posting(
     logger.info("  Company: %s", job_data.get('company_name', 'N/A'))
     logger.info("  Position: %s", job_data.get('job_title', 'N/A'))
     logger.info("  Location: %s", job_data.get('location', 'N/A'))
-    logger.info("  Trello Card: %s", card['shortUrl'])
+    if card:
+        logger.info("  Trello Card: %s", card['shortUrl'])
+    else:
+        logger.info("  Trello Card: (skipped)")
     # logger.info("  Data saved: %s", filename)  # JSON file saving disabled
     if cover_letter_file:
         logger.info("  Cover Letter (TXT): %s", cover_letter_file)

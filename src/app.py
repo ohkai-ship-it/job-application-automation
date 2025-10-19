@@ -18,6 +18,7 @@ from utils.error_reporting import report_error
 import threading
 import json
 from datetime import datetime
+import time
 
 # Validate environment at startup (allow skipping in tests)
 skip_env = os.getenv('SKIP_ENV_VALIDATION', '0') == '1'
@@ -41,9 +42,15 @@ app.config.update(
     DEBUG=get_str('FLASK_DEBUG', 'False').lower() == 'true'
 )
 
-# Paths configuration
-OUTPUT_DIR = Path(get_str('OUTPUT_DIR', 'output'))
-DATA_DIR = Path(get_str('DATA_DIR', 'data'))
+# Paths configuration (relative to project root, not src/)
+APP_ROOT = Path(__file__).parent.parent  # Go up from src/ to project root
+
+# Get paths from env or use defaults relative to project root
+output_dir_env = get_str('OUTPUT_DIR', '').strip()
+data_dir_env = get_str('DATA_DIR', '').strip()
+
+OUTPUT_DIR = Path(output_dir_env) if output_dir_env else (APP_ROOT / 'output')
+DATA_DIR = Path(data_dir_env) if data_dir_env else (APP_ROOT / 'data')
 
 # Store processing status
 processing_status = {}
@@ -98,7 +105,17 @@ def handle_exception(e: Exception):
 
 @app.route('/')
 def index() -> str:
-    """Main page"""
+    """Main page - redirect to batch processor"""
+    return render_template('batch.html')
+
+@app.route('/batch')
+def batch() -> str:
+    """Batch processor page"""
+    return render_template('batch.html')
+
+@app.route('/classic')
+def classic() -> str:
+    """Classic single-URL processor (legacy)"""
     return render_template('index.html')
 
 @app.route('/favicon.ico')
@@ -115,6 +132,10 @@ def process() -> Response:
     if not url:
         return jsonify({'error': 'No URL provided'}), 400
     
+    # Get settings from request
+    create_trello_card = data.get('create_trello_card', True)
+    generate_pdf = data.get('generate_pdf', False)
+    
     # Generate unique job ID
     job_id = f"job_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
     
@@ -123,31 +144,107 @@ def process() -> Response:
         'status': 'processing',
         'message': 'Starting automation...',
         'url': url,
-        'progress': 0
+        'progress': 0,
+        'job_title': '',  # Will be populated after early scrape
+        'company_name': ''  # Will be populated after early scrape
     }
     
-    # Process in background thread
-    thread = threading.Thread(target=process_in_background, args=(job_id, url))
+    # Process in background thread with settings
+    thread = threading.Thread(target=process_in_background, args=(job_id, url, create_trello_card, generate_pdf))
     thread.start()
     
     return jsonify({'job_id': job_id})
 
-def process_in_background(job_id: str, url: str) -> None:
-    """Process job in background"""
+def process_in_background(job_id: str, url: str, create_trello_card: bool = True, generate_pdf: bool = False) -> None:
+    """Process job in background with real-time progress updates"""
     try:
         logger.info(f"[{job_id}] Starting background processing for: {url}")
-        processing_status[job_id]['message'] = 'Scraping job posting...'
+        logger.info(f"[{job_id}] Settings: create_trello_card={create_trello_card}, generate_pdf={generate_pdf}")
+        
+        # Initialize progress
+        processing_status[job_id]['message'] = 'Gathering information...'
+        processing_status[job_id]['progress'] = 5
+        
+        # Step 1: Do quick scrape BEFORE starting the blocking process_job_posting call
+        # This gives frontend time to grab the data during early aggressive polling
+        logger.info(f"[{job_id}] Quick scrape to extract job info...")
+        try:
+            from src.scraper import detect_job_source, scrape_stepstone_job
+            from src.linkedin_scraper import scrape_linkedin_job as scrape_linkedin
+            
+            source = detect_job_source(url)
+            job_data = scrape_linkedin(url) if source == 'linkedin' else scrape_stepstone_job(url)
+            
+            if job_data:
+                # Set the fields immediately - frontend will poll and catch them
+                processing_status[job_id]['job_title'] = job_data.get('job_title', 'Unknown')
+                processing_status[job_id]['company_name'] = job_data.get('company_name', 'Unknown')
+                logger.info(f"[{job_id}] Job info extracted: {processing_status[job_id]['company_name']} - {processing_status[job_id]['job_title']}")
+        except Exception as e:
+            logger.warning(f"[{job_id}] Quick scrape failed: {e}")
+        
+        processing_status[job_id]['progress'] = 15
+        
+        # Step 2: Update message and progress for Trello phase
+        processing_status[job_id]['message'] = 'Logging in Trello...'
         processing_status[job_id]['progress'] = 20
         
-        result = process_job_posting(url, generate_cover_letter=True, generate_pdf=False)
+        # Animate progress during the blocking process_job_posting call
+        import threading
+        
+        def animate_progress():
+            """Animate progress updates during blocking processing"""
+            # Simulate progress from 25% to 59% during Trello phase
+            for p in range(25, 60, 5):
+                time.sleep(0.3)
+                if processing_status[job_id]['progress'] < 60:
+                    processing_status[job_id]['progress'] = p
+            
+            # Simulate cover letter phase (60-79%)
+            time.sleep(0.1)
+            if processing_status[job_id]['progress'] < 80:
+                processing_status[job_id]['message'] = 'Generating cover letter...'
+                processing_status[job_id]['progress'] = 60
+            
+            for p in range(65, 80, 5):
+                time.sleep(0.3)
+                if processing_status[job_id]['progress'] < 80:
+                    processing_status[job_id]['progress'] = p
+            
+            # Simulate document phase (80-99%)
+            time.sleep(0.1)
+            if processing_status[job_id]['progress'] < 100:
+                processing_status[job_id]['message'] = 'Creating documents...'
+                processing_status[job_id]['progress'] = 80
+            
+            for p in range(85, 100, 5):
+                time.sleep(0.3)
+                if processing_status[job_id]['progress'] < 100:
+                    processing_status[job_id]['progress'] = p
+        
+        # Start progress animation in background
+        animator = threading.Thread(target=animate_progress, daemon=True)
+        animator.start()
+        
+        # NOW process the job with the specified settings
+        result = process_job_posting(url, generate_cover_letter=True, generate_pdf=generate_pdf, create_trello_card=create_trello_card)
         logger.info(f"[{job_id}] Process result status: {result.get('status')}")
         
+        # Wait for animator to finish
+        time.sleep(0.5)
+        
         if result['status'] == 'success':
+            
             def to_str(val):
                 return str(val) if isinstance(val, Path) else val
             
             docx_file = result.get('cover_letter_docx_file')
             logger.info(f"[{job_id}] DOCX file created: {docx_file}")
+            
+            # Step 5: Complete
+            trello_card_url = None
+            if result.get('trello_card'):
+                trello_card_url = result['trello_card']['shortUrl']
             
             processing_status[job_id] = {
                 'status': 'complete',
@@ -157,7 +254,7 @@ def process_in_background(job_id: str, url: str) -> None:
                     'company': result['job_data'].get('company_name'),
                     'title': result['job_data'].get('job_title'),
                     'location': result['job_data'].get('location'),
-                    'trello_card': result['trello_card']['shortUrl'],
+                    'trello_card': trello_card_url,
                     'files': {
                         # 'json': to_str(result.get('data_file')),  # JSON file generation disabled
                         # 'txt': to_str(result.get('cover_letter_text_file')),  # TXT file generation disabled
@@ -172,7 +269,7 @@ def process_in_background(job_id: str, url: str) -> None:
             processing_status[job_id] = {
                 'status': 'error',
                 'message': f"Error: {result.get('error', 'Unknown error')}",
-                'progress': 0
+                'progress': 100
             }
     
     except Exception as e:
@@ -180,7 +277,7 @@ def process_in_background(job_id: str, url: str) -> None:
         processing_status[job_id] = {
             'status': 'error',
             'message': f'Error: {str(e)}',
-            'progress': 0
+            'progress': 100
         }
 
 @app.route('/status/<job_id>')
@@ -195,13 +292,35 @@ def status(job_id: str) -> Response:
 def download(filename: str) -> Response:
     """Download generated file"""
     try:
-        # Determine correct directory based on file type
+        import os
+        
+        # Extract just the filename from the path
+        # Example: "output/cover_letters/file.docx" → "file.docx"
+        just_filename = os.path.basename(filename)
+        logger.info(f"Download request: filename={filename}, basename={just_filename}")
+        
+        # Determine directory and filepath
         if filename.startswith('scraped_job_'):
-            filepath = DATA_DIR / filename
+            filepath = DATA_DIR / just_filename
+            logger.info(f"  Looking in DATA_DIR: {filepath}")
         else:
-            filepath = OUTPUT_DIR / filename
-        return send_file(str(filepath), as_attachment=True)
+            # Most files are in output/cover_letters
+            filepath = OUTPUT_DIR / 'cover_letters' / just_filename
+            logger.info(f"  Looking in cover_letters: {filepath}")
+        
+        # Verify file exists before attempting download
+        if not filepath.exists():
+            logger.warning(f"File not found: {filepath}")
+            return jsonify({'error': f'File not found: {just_filename}'}), 404
+        
+        logger.info(f"  Sending file: {filepath}")
+        return send_file(
+            str(filepath), 
+            as_attachment=True,
+            download_name=just_filename
+        )
     except Exception as e:
+        logger.exception(f"Download error for {filename}: {e}")
         return jsonify({'error': str(e)}), 404
 
 @app.route('/history')
@@ -268,6 +387,53 @@ def list_errors() -> Response:
     except Exception as e:
         # Let global handler capture details; return generic response
         raise e
+
+@app.get('/outputs')
+def list_outputs() -> Response:
+    """List all output files (cover letters, PDFs, etc.)"""
+    try:
+        files = []
+        
+        # Get cover letters
+        cover_letters_dir = OUTPUT_DIR / 'cover_letters'
+        if cover_letters_dir.exists():
+            for f in sorted(cover_letters_dir.glob('*'), key=lambda x: x.stat().st_mtime, reverse=True)[:20]:
+                if f.is_file():
+                    files.append({
+                        'name': f.name,
+                        'type': 'cover_letter',
+                        'path': str(f.relative_to(OUTPUT_DIR)),
+                        'timestamp': f.stat().st_mtime,
+                        'size': f.stat().st_size,
+                    })
+        
+        return jsonify({'files': files})
+    except Exception as e:
+        logger.exception("Error listing outputs: %s", e)
+        return jsonify({'files': []})
+
+@app.get('/api/recent-files')
+def api_recent_files() -> Response:
+    """API endpoint: Get recent generated files (for batch UI)"""
+    try:
+        limit = min(100, int(request.args.get('limit', 10)))
+        files = []
+        
+        cover_letters_dir = OUTPUT_DIR / 'cover_letters'
+        if cover_letters_dir.exists():
+            for f in sorted(cover_letters_dir.glob('*'), key=lambda x: x.stat().st_mtime, reverse=True)[:limit]:
+                if f.is_file():
+                    files.append({
+                        'name': f.name,
+                        'path': f'cover_letters/{f.name}',
+                        'time': f.stat().st_mtime,
+                        'type': 'docx' if f.suffix == '.docx' else 'pdf' if f.suffix == '.pdf' else 'other'
+                    })
+        
+        return jsonify({'files': files})
+    except Exception as e:
+        logger.exception("Error getting recent files: %s", e)
+        return jsonify({'files': []})
 
 if __name__ == '__main__':
     # Ensure required directories exist
