@@ -772,9 +772,7 @@
                 console.error('Error cancelling jobs:', error);
             }
             
-            // Reset UI
-            document.getElementById('urlInput').value = '';
-            document.getElementById('urlCount').textContent = '0';
+            // Reset UI (keep URLs in input field)
             document.getElementById('progressSection').style.display = 'none';
             document.getElementById('processAllBtn').style.display = 'inline-block';
             document.getElementById('pauseBtn').style.display = 'none';
