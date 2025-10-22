@@ -574,12 +574,9 @@
                         <button class="btn btn-primary" id="processAllBtn" onclick="processAllJobs()">
                             ▶ Process All Jobs
                         </button>
-                        <button class="btn btn-warning" id="pauseBtn" onclick="togglePause()" style="display: none;">
-                            ⏸ Pause
-                        </button>
                         <button class="btn btn-secondary" id="clearAllBtn" onclick="clearInput()">Clear All</button>
-                        <button class="btn btn-danger" id="cancelAllBtn" onclick="cancelAll()" style="display: none;">
-                            ✕ Cancel All
+                        <button class="btn btn-danger" id="stopAllBtn" onclick="cancelAll()" style="display: none;">
+                            ⏹ Stop All
                         </button>
                     </div>
                 </div>
@@ -736,17 +733,11 @@
             document.getElementById('progressSection').style.display = 'none';
         }
         
-        // Toggle pause/resume
+        // Pause is currently not functional - backend is blocking during process_job_posting
+        // TODO: Implement proper pause by refactoring main.py to support pause checking
         function togglePause() {
-            const pauseBtn = document.getElementById('pauseBtn');
-            if (paused) {
-                paused = false;
-                pauseBtn.textContent = '⏸ Pause';
-                processNextJob();
-            } else {
-                paused = true;
-                pauseBtn.textContent = '▶ Resume';
-            }
+            // Disabled for now - pause doesn't work while backend is busy
+            alert('Pause functionality requires backend refactoring. Use Cancel All instead.');
         }
         
         // Cancel all jobs
@@ -774,10 +765,9 @@
             
             // Reset UI (keep URLs in input field)
             document.getElementById('progressSection').style.display = 'none';
-            document.getElementById('processAllBtn').style.display = 'inline-block';
-            document.getElementById('pauseBtn').style.display = 'none';
-            document.getElementById('cancelAllBtn').style.display = 'none';
-            document.getElementById('clearAllBtn').disabled = false;
+            document.getElementById('processAllBtn').disabled = false;
+            document.getElementById('stopAllBtn').style.display = 'none';
+            document.getElementById('clearAllBtn').style.display = 'inline-block';
             updateQueueDisplay();
             loadRecentFiles();
         }
@@ -806,30 +796,22 @@
             updateStats();
             updateQueueDisplay();
             document.getElementById('progressSection').style.display = 'block';
-            document.getElementById('processAllBtn').style.display = 'none';
-            document.getElementById('pauseBtn').style.display = 'inline-block';
-            document.getElementById('pauseBtn').textContent = '⏸ Pause';
-            document.getElementById('cancelAllBtn').style.display = 'inline-block';
-            document.getElementById('clearAllBtn').disabled = true;
+            document.getElementById('processAllBtn').disabled = true;
+            document.getElementById('clearAllBtn').style.display = 'none';
+            document.getElementById('stopAllBtn').style.display = 'inline-block';
             
             processNextJob();
         }
         
         // Process next job
         async function processNextJob() {
-            // Check if paused
-            if (paused) {
-                return;
-            }
-            
             const job = queue.find(j => j.status === 'queued');
             
             if (!job) {
                 processing = false;
-                document.getElementById('processAllBtn').style.display = 'inline-block';
-                document.getElementById('pauseBtn').style.display = 'none';
-                document.getElementById('cancelAllBtn').style.display = 'none';
-                document.getElementById('clearAllBtn').disabled = false;
+                document.getElementById('processAllBtn').disabled = false;
+                document.getElementById('clearAllBtn').style.display = 'inline-block';
+                document.getElementById('stopAllBtn').style.display = 'none';
                 loadRecentFiles(); // Final refresh after all jobs done
                 return;
             }
@@ -918,11 +900,6 @@
         
         // Check job status
         async function checkJobStatus(job) {
-            // Don't continue polling if paused
-            if (paused) {
-                return;
-            }
-            
             try {
                 const response = await fetch(`/status/${job.jobId}`);
                 
@@ -970,15 +947,11 @@
                     }
                     updateQueueDisplay();
                     updateProgressBar();
-                    setTimeout(() => {
-                        if (!paused) checkJobStatus(job);
-                    }, 1000);
+                    setTimeout(() => checkJobStatus(job), 1000);
                 }
             } catch (error) {
                 console.error('Error checking status:', error);
-                setTimeout(() => {
-                    if (!paused) checkJobStatus(job);
-                }, 2000);
+                setTimeout(() => checkJobStatus(job), 2000);
             }
         }
         
