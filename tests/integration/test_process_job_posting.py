@@ -35,7 +35,7 @@ def fake_scrape(url: str):
 
 def test_process_job_posting_happy_path(monkeypatch, tmp_path):
     # Patch scraper
-    monkeypatch.setattr(main, "scrape_stepstone_job", lambda url: fake_scrape(url))
+    monkeypatch.setattr(main, "scrape_job_posting", lambda url: fake_scrape(url))
     # Patch Trello client to avoid network
     class FakeTrello:
         def create_card_from_job_data(self, job_data):

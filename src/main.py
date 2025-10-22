@@ -8,7 +8,8 @@ import os
 from pathlib import Path
 sys.path.append(os.path.dirname(__file__))
 
-from scraper import scrape_stepstone_job, save_to_json
+from scraper import scrape_stepstone_job, save_to_json, StepstoneScraper
+from linkedin_scraper import LinkedInScraper, scrape_linkedin_job
 from trello_connect import TrelloConnect
 from cover_letter import CoverLetterGenerator
 from docx_generator import WordCoverLetterGenerator
@@ -19,6 +20,7 @@ from utils.error_reporting import report_error
 import json
 from datetime import datetime
 import time
+import asyncio
 
 # Validate environment at startup (allow skipping in tests)
 skip_env = os.getenv('SKIP_ENV_VALIDATION', '0') == '1'
@@ -40,6 +42,62 @@ OUTPUT_DIR = Path(get_str('OUTPUT_DIR', 'output'))
 
 
 from typing import Any, Dict, List, Optional
+
+
+def detect_job_source(url: str) -> str:
+    """
+    Detect job source from URL.
+    
+    Args:
+        url: Job posting URL
+        
+    Returns:
+        'stepstone', 'linkedin', or 'unknown'
+    """
+    url_lower = url.lower()
+    if 'stepstone' in url_lower:
+        return 'stepstone'
+    elif 'linkedin' in url_lower:
+        return 'linkedin'
+    return 'unknown'
+
+
+async def scrape_job_posting_async(url: str) -> Optional[Dict[str, Any]]:
+    """
+    Scrape a job posting using the appropriate scraper based on URL.
+    
+    Args:
+        url: Job posting URL
+        
+    Returns:
+        Job data dictionary or None if scraping failed
+    """
+    source = detect_job_source(url)
+    logger = get_logger(__name__)
+    
+    if source == 'stepstone':
+        scraper = StepstoneScraper()
+        return await scraper.scrape(url)
+    elif source == 'linkedin':
+        scraper = LinkedInScraper()
+        return await scraper.scrape(url)
+    else:
+        logger.error("Unknown job source for URL: %s", url)
+        return None
+
+
+def scrape_job_posting(url: str) -> Optional[Dict[str, Any]]:
+    """
+    Scrape a job posting (sync wrapper for backward compatibility).
+    
+    Args:
+        url: Job posting URL
+        
+    Returns:
+        Job data dictionary or None if scraping failed
+    """
+    return asyncio.run(scrape_job_posting_async(url))
+
 
 def process_job_posting(
     url: str,
@@ -100,7 +158,8 @@ def process_job_posting(
     logger.info("STEP 1: Scraping job posting...")
     logger.info("%s", "-" * 80)
     
-    job_data = scrape_stepstone_job(url)
+    # Use new job-source-aware scraping
+    job_data = scrape_job_posting(url)
     
     if not job_data:
         logger.error("Failed to scrape job posting!")
