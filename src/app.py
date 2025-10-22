@@ -101,6 +101,11 @@ def index() -> str:
     """Main page"""
     return render_template('index.html')
 
+@app.route('/batch')
+def batch() -> str:
+    """Batch processing interface"""
+    return render_template('batch.html')
+
 @app.route('/favicon.ico')
 def favicon() -> Response:
     """Prevent noisy 404s from browser favicon requests."""
@@ -284,7 +289,10 @@ if __name__ == '__main__':
     debug = app.config['DEBUG']
     
     logger.info("Starting web server...")
-    logger.info("Open your browser and go to: http://%s:%s", host, port)
+    base_url = f"http://{host}:{port}"
+    logger.info("Open your browser and go to:")
+    logger.info("  Single Job Processing: %s/", base_url)
+    logger.info("  Batch Processing:      %s/batch", base_url)
     logger.info("Debug mode: %s", 'enabled' if debug else 'disabled')
     logger.info("Press Ctrl+C to stop the server")
     
