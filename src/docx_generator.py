@@ -113,6 +113,8 @@ class WordCoverLetterGenerator:
 
         # Save document
         try:
+            # Normalize the path to use proper OS separators
+            output_path = os.path.normpath(output_path)
             os.makedirs(os.path.dirname(output_path), exist_ok=True)
             doc.save(output_path)
         except Exception as e:

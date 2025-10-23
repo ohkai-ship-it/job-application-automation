@@ -1,0 +1,14 @@
+{
+  "id": "evt_20251023T072655Z",
+  "timestamp": "20251023T072655Z",
+  "severity": "error",
+  "message": "Cover letter generation failed",
+  "exception_type": "AIGenerationError",
+  "stack": "Traceback (most recent call last):\n  File \"C:\\Users\\Kai\\OneDrive\\Documents\\04 Themen\\Tech\\Programmierung\\VS Code\\Python\\job-application-automation\\src\\main.py\", line 284, in process_job_posting\n    cover_letter_body = ai_generator.generate_cover_letter(job_data)\n  File \"C:\\Users\\Kai\\OneDrive\\Documents\\04 Themen\\Tech\\Programmierung\\VS Code\\Python\\job-application-automation\\src\\cover_letter.py\", line 259, in generate_cover_letter\n    raise AIGenerationError(f\"Cover letter length out of bounds: {word_count} words\")\nutils.errors.AIGenerationError: Cover letter length out of bounds: 151 words\n",
+  "context": {
+    "company": "Commerz Globalpay GmbH",
+    "title": "Product Commercialization Manager (w/m/d)",
+    "url": "https://www.linkedin.com/jobs/collections/recommended/?currentJobId=4273679715"
+  },
+  "pid": 36424
+}

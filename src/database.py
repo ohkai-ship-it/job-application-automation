@@ -396,6 +396,43 @@ class ApplicationDB:
             logger.error(f"Error clearing database: {e}")
             raise
     
+    def delete_job(self, job_id: str = None, source_url: str = None) -> bool:
+        """
+        Delete a job record from the database.
+        
+        Args:
+            job_id: Job ID (preferred lookup)
+            source_url: Source URL (fallback lookup)
+        
+        Returns:
+            True if deleted, False if not found
+        """
+        if not job_id and not source_url:
+            logger.error("Either job_id or source_url required for deletion")
+            return False
+        
+        try:
+            with self._get_connection() as conn:
+                cursor = conn.cursor()
+                
+                if job_id:
+                    cursor.execute("DELETE FROM processed_jobs WHERE job_id = ?", (job_id,))
+                else:
+                    cursor.execute("DELETE FROM processed_jobs WHERE source_url = ?", (source_url,))
+                
+                deleted = cursor.rowcount > 0
+                conn.commit()
+                
+                if deleted:
+                    logger.info(f"Deleted job from database: {job_id or source_url}")
+                else:
+                    logger.warning(f"Job not found in database: {job_id or source_url}")
+                
+                return deleted
+        except Exception as e:
+            logger.error(f"Error deleting job: {e}")
+            raise
+    
     def get_stats(self) -> Dict[str, Any]:
         """
         Get overall database statistics.

@@ -1,0 +1,12 @@
+{
+  "id": "evt_20251023T084147Z",
+  "timestamp": "20251023T084147Z",
+  "severity": "error",
+  "message": "Scrape returned no data",
+  "exception_type": null,
+  "stack": null,
+  "context": {
+    "url": "https://www.linkedin.com/jobs/view/4315658109/?alternateChannel=search&eBP=CwEAAAGaEDLyMmo-2FMGiF5Idi63rucg7Cls8ahlXb2X7ZSy208lVKUxJ7AyyiA-rbrtJkeOQfPuXseBheLj7IsIv7JfxhnlhOuEgWX6xr0wFkVpK_CsucS0Y6VR3PAo4cp75f7yqwzDk2--UlEO_3bceqMWd-15eEDdT1JbaUbzyNFEKVQNsslGaPFdjk5s0X7hGRiCnhZBL8AHct8sLsgv-h_LExvLZurf2KwdhFMGjAzkYPTFsTy5_He_-v43x1IAlFTIKP7pRzzsKzUbygXt8RLECcyCksU2N_3KjkhA72Vrp2UASIGRRXuXX6fbJpEDmnk40s-fQKvm5NaHCue6BRbUAoI5uUHRdWJ2G_RSWoHV3R0Ps95zhz3LAXS7VlqTC5I53l_oy8cSCveVne-WVwAHqBq1V_QWq6fViU5peAdqojahBMKO4Gf1R0ftiF_1crrMeJ_fJnvHIzfOq8-LRSDM-GyNzrKw4gJJ2SK1SyYHqm2NZA&refId=k7lYTDoQHhARzv5D4a%2BpLA%3D%3D&trackingId=HJpB3BW6xohg2pGu4rig4Q%3D%3D&trk=d_flagship3_job_details&lipi=urn%3Ali%3Apage%3Ad_flagship3_search_srp_jobs%3BRJPtmgGPRoKwkYUVdPkYPQ%3D%3D"
+  },
+  "pid": 43176
+}

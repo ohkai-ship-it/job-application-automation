@@ -1,0 +1,14 @@
+{
+  "id": "evt_20251023T124748Z",
+  "timestamp": "20251023T124748Z",
+  "severity": "error",
+  "message": "Cover letter generation failed",
+  "exception_type": "AIGenerationError",
+  "stack": "Traceback (most recent call last):\n  File \"C:\\Users\\Kai\\OneDrive\\Documents\\04 Themen\\Tech\\Programmierung\\VS Code\\Python\\job-application-automation\\src\\main.py\", line 325, in process_job_posting\n    cover_letter_body = ai_generator.generate_cover_letter(job_data, target_language=lang_for_generation)\n  File \"C:\\Users\\Kai\\OneDrive\\Documents\\04 Themen\\Tech\\Programmierung\\VS Code\\Python\\job-application-automation\\src\\cover_letter.py\", line 259, in generate_cover_letter\n    raise AIGenerationError(f\"Cover letter length out of bounds: {word_count} words\")\nutils.errors.AIGenerationError: Cover letter length out of bounds: 169 words\n",
+  "context": {
+    "company": "ATG Entertainment DE",
+    "title": "Maskenbildner (m/w/d)",
+    "url": "https://www.linkedin.com/jobs/search/?currentJobId=4319014372&keywords=fris%C3%B6r&origin=JOB_SEARCH_PAGE_SEARCH_BUTTON&refresh=true"
+  },
+  "pid": 49308
+}

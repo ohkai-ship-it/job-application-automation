@@ -159,6 +159,8 @@ def process() -> Response:
         'progress': 0,
         'job_title': '',  # Will be populated after early scrape
         'company_name': '',  # Will be populated after early scrape
+        'source_url': None,  # Will be populated after early scrape
+        'company_page_url': None,  # Will be populated after early scrape
         'paused': False  # Pause flag
     }
     
@@ -185,7 +187,7 @@ def process_in_background(
         logger.info(f"[{job_id}] Settings: create_trello_card={create_trello_card}, generate_pdf={generate_pdf}")
         
         # Initialize progress
-        processing_status[job_id]['message'] = 'Gathering information...'
+        processing_status[job_id]['message'] = 'Gathering Information'
         processing_status[job_id]['progress'] = 5
         
         # Step 1: Do quick scrape BEFORE starting the blocking process_job_posting call
@@ -201,65 +203,41 @@ def process_in_background(
                 # Set the fields immediately - frontend will poll and catch them
                 processing_status[job_id]['job_title'] = job_data.get('job_title', 'Unknown')
                 processing_status[job_id]['company_name'] = job_data.get('company_name', 'Unknown')
+                processing_status[job_id]['source_url'] = job_data.get('source_url')
+                processing_status[job_id]['company_page_url'] = job_data.get('company_page_url')
                 logger.info(f"[{job_id}] Job info extracted: {processing_status[job_id]['company_name']} - {processing_status[job_id]['job_title']}")
+                logger.info(f"[{job_id}] URLs - JD: {processing_status[job_id]['source_url']}, Company: {processing_status[job_id]['company_page_url']}")
+            else:
+                logger.warning(f"[{job_id}] Quick scrape returned no data")
         except Exception as e:
             logger.warning(f"[{job_id}] Quick scrape failed: {e}")
         
+        # Check if job was cancelled while we were scraping
+        if job_id not in processing_status:
+            logger.warning(f"[{job_id}] Job was cancelled, skipping processing")
+            return
+        
         processing_status[job_id]['progress'] = 15
         
-        # Step 2: Update message and progress for Trello phase
-        processing_status[job_id]['message'] = 'Logging in Trello...'
-        processing_status[job_id]['progress'] = 20
-        
-        # Animate progress during the blocking process_job_posting call
-        import threading
-        
-        def animate_progress():
-            """Animate progress updates during blocking processing"""
-            # Simulate progress from 25% to 59% during Trello phase
-            for p in range(25, 60, 5):
-                time.sleep(0.3)
-                # Check pause flag frequently
-                while processing_status[job_id].get('paused', False):
-                    time.sleep(0.1)
-                if processing_status[job_id]['progress'] < 60:
-                    processing_status[job_id]['progress'] = p
-            
-            # Simulate cover letter phase (60-79%)
-            time.sleep(0.1)
-            while processing_status[job_id].get('paused', False):
-                time.sleep(0.1)
-            if processing_status[job_id]['progress'] < 80:
-                processing_status[job_id]['message'] = 'Generating cover letter...'
-                processing_status[job_id]['progress'] = 60
-            
-            for p in range(65, 80, 5):
-                time.sleep(0.3)
-                # Check pause flag frequently
-                while processing_status[job_id].get('paused', False):
-                    time.sleep(0.1)
-                if processing_status[job_id]['progress'] < 80:
-                    processing_status[job_id]['progress'] = p
-            
-            # Simulate document phase (80-99%)
-            time.sleep(0.1)
-            while processing_status[job_id].get('paused', False):
-                time.sleep(0.1)
-            if processing_status[job_id]['progress'] < 100:
-                processing_status[job_id]['message'] = 'Creating documents...'
-                processing_status[job_id]['progress'] = 80
-            
-            for p in range(85, 100, 5):
-                time.sleep(0.3)
-                # Check pause flag frequently
-                while processing_status[job_id].get('paused', False):
-                    time.sleep(0.1)
-                if processing_status[job_id]['progress'] < 100:
-                    processing_status[job_id]['progress'] = p
-        
-        # Start progress animation in background
-        animator = threading.Thread(target=animate_progress, daemon=True)
-        animator.start()
+        # Create progress callback that will POST updates to the frontend
+        def progress_callback(progress=0, message='', job_title='', company_name=''):
+            """Callback to report real progress from main.py to frontend"""
+            try:
+                # Check if job still exists (might have been cancelled)
+                if job_id not in processing_status:
+                    logger.debug(f"[{job_id}] Job no longer in processing_status, skipping progress update")
+                    return
+                
+                processing_status[job_id]['progress'] = progress
+                if message:
+                    processing_status[job_id]['message'] = message
+                if job_title:
+                    processing_status[job_id]['job_title'] = job_title
+                if company_name:
+                    processing_status[job_id]['company_name'] = company_name
+                logger.debug(f"[{job_id}] Progress: {progress}% - {message}")
+            except Exception as e:
+                logger.warning(f"[{job_id}] Error in progress callback: {e}")
         
         # NOW process the job with the specified settings
         result = process_job_posting(
@@ -267,12 +245,15 @@ def process_in_background(
             generate_cover_letter=generate_documents,
             generate_pdf=generate_pdf,
             create_trello_card=create_trello_card,
-            target_language=target_language
+            target_language=target_language,
+            progress_callback=progress_callback  # NEW: Pass callback
         )
         logger.info(f"[{job_id}] Process result status: {result.get('status')}")
         
-        # Wait for animator to finish
-        time.sleep(0.5)
+        # Check if job was cancelled while processing
+        if job_id not in processing_status or processing_status[job_id].get('status') == 'cancelled':
+            logger.warning(f"[{job_id}] Job was cancelled during processing, not updating status")
+            return
         
         if result['status'] == 'success':
             
@@ -291,10 +272,13 @@ def process_in_background(
                 'status': 'complete',
                 'message': 'Automation complete!',
                 'progress': 100,
+                'url': processing_status[job_id].get('url'),
                 'result': {
                     'company': result['job_data'].get('company_name'),
                     'title': result['job_data'].get('job_title'),
                     'location': result['job_data'].get('location'),
+                    'source_url': result['job_data'].get('source_url'),
+                    'company_page_url': result['job_data'].get('company_page_url'),
                     'trello_card': trello_card_url,
                     'is_duplicate': result.get('is_duplicate', False),  # NEW: Flag indicating duplicate
                     'files': {
@@ -306,6 +290,33 @@ def process_in_background(
                 }
             }
             logger.info(f"[{job_id}] Processing complete successfully")
+        elif result['status'] == 'cover_letter_failed':
+            # NEW: Handle cover letter generation failure (allow retry)
+            logger.warning(f"[{job_id}] Processing complete but cover letter generation failed: {result.get('cover_letter_error')}")
+            trello_card_url = None
+            if result.get('trello_card'):
+                trello_card_url = result['trello_card']['shortUrl']
+            
+            processing_status[job_id] = {
+                'status': 'cover_letter_failed',
+                'message': f"Cover letter failed: {result.get('cover_letter_error')}",
+                'progress': 100,
+                'url': processing_status[job_id].get('url'),
+                'job_data': result.get('job_data'),  # Store for retry
+                'result': {
+                    'company': result['job_data'].get('company_name'),
+                    'title': result['job_data'].get('job_title'),
+                    'location': result['job_data'].get('location'),
+                    'source_url': result['job_data'].get('source_url'),
+                    'company_page_url': result['job_data'].get('company_page_url'),
+                    'trello_card': trello_card_url,
+                    'is_duplicate': result.get('is_duplicate', False),
+                    'files': {
+                        'docx': None,
+                        'pdf': None
+                    }
+                }
+            }
         else:
             logger.error(f"[{job_id}] Processing failed: {result.get('error')}")
             processing_status[job_id] = {
@@ -328,7 +339,30 @@ def status(job_id: str) -> Response:
     if job_id not in processing_status:
         return jsonify({'error': 'Job not found'}), 404
     
-    return jsonify(processing_status[job_id])
+    status_data = processing_status[job_id]
+    logger.debug(f"[{job_id}] Status response: source_url={status_data.get('source_url')}, company_page_url={status_data.get('company_page_url')}")
+    return jsonify(status_data)
+
+@app.route('/update-progress/<job_id>', methods=['POST'])
+def update_progress(job_id: str) -> Response:
+    """Update job progress from backend processing (main.py)"""
+    if job_id not in processing_status:
+        return jsonify({'error': 'Job not found'}), 404
+    
+    data = request.json or {}
+    
+    # Update progress fields
+    if 'progress' in data:
+        processing_status[job_id]['progress'] = int(data['progress'])
+    if 'message' in data:
+        processing_status[job_id]['message'] = str(data['message'])
+    if 'job_title' in data:
+        processing_status[job_id]['job_title'] = str(data['job_title'])
+    if 'company_name' in data:
+        processing_status[job_id]['company_name'] = str(data['company_name'])
+    
+    logger.debug(f"[{job_id}] Progress updated: {data}")
+    return jsonify({'success': True, 'status': processing_status[job_id]['status']})
 
 @app.route('/pause/<job_id>', methods=['POST'])
 def pause_job(job_id: str) -> Response:
@@ -350,20 +384,199 @@ def pause_job(job_id: str) -> Response:
 
 @app.route('/cancel', methods=['POST'])
 def cancel_all() -> Response:
-    """Cancel all jobs and clean up database"""
+    """Cancel all jobs and mark them as cancelled (don't delete from processing_status)"""
     try:
-        # Clear all processing status entries
-        processing_status.clear()
+        # Mark all processing/queued jobs as cancelled instead of clearing them
+        # This allows them to be deleted later
+        for job_id, job_status in list(processing_status.items()):
+            if job_status['status'] in ['processing', 'queued']:
+                logger.info(f"[{job_id}] Marking job as cancelled")
+                processing_status[job_id]['status'] = 'cancelled'
+                processing_status[job_id]['message'] = 'Job cancelled by user'
         
-        # Clear database
-        db = get_db()
-        db.clear_all()
-        
-        logger.info("All jobs cancelled and database cleaned")
-        return jsonify({'success': True, 'message': 'All jobs cancelled and database cleaned'})
+        logger.info("All jobs marked as cancelled")
+        return jsonify({'success': True, 'message': 'All jobs cancelled'})
     except Exception as e:
         logger.exception("Error cancelling jobs: %s", e)
         return jsonify({'error': str(e)}), 500
+
+@app.route('/retry-cover-letter/<job_id>', methods=['POST'])
+def retry_cover_letter(job_id: str) -> Response:
+    """Retry cover letter generation for a failed job"""
+    if job_id not in processing_status:
+        return jsonify({'error': 'Job not found'}), 404
+    
+    status_info = processing_status[job_id]
+    if status_info['status'] != 'cover_letter_failed':
+        return jsonify({'error': 'Job must have cover_letter_failed status to retry'}), 400
+    
+    # Get the job data from processing status
+    job_data = status_info.get('job_data')
+    if not job_data:
+        return jsonify({'error': 'Job data not found for retry'}), 400
+    
+    # Reset status and start retry in background
+    processing_status[job_id]['status'] = 'processing'
+    processing_status[job_id]['progress'] = 60  # Start at AI phase
+    processing_status[job_id]['message'] = 'Generating Cover Letter with AI (Retry)'
+    
+    def retry_in_background():
+        try:
+            from cover_letter import CoverLetterGenerator
+            
+            logger.info(f"[{job_id}] Retrying cover letter generation...")
+            
+            # Re-generate cover letter
+            ai_generator = CoverLetterGenerator()
+            cover_letter_body = ai_generator.generate_cover_letter(job_data)
+            
+            if not cover_letter_body:
+                processing_status[job_id]['status'] = 'cover_letter_failed'
+                processing_status[job_id]['message'] = 'Cover letter generation failed (still too short)'
+                logger.warning(f"[{job_id}] Retry failed: No cover letter generated")
+                return
+            
+            # Store in job_data for document generation
+            job_data['cover_letter_body'] = cover_letter_body
+            
+            # Generate Word document
+            processing_status[job_id]['progress'] = 80
+            processing_status[job_id]['message'] = 'Creating Word document'
+            
+            from docx_generator import WordCoverLetterGenerator
+            word_generator = WordCoverLetterGenerator()
+            
+            # Detect language
+            language = ai_generator.detect_language(job_data.get('job_description', ''))
+            
+            # Generate filename
+            sender_name = word_generator.sender['name']
+            sender_name_no_title = sender_name.replace('Dr. ', '').replace('Prof. ', '')
+            company_name = job_data.get('company_name', 'Company')
+            from datetime import datetime
+            date_str = datetime.now().strftime('%Y-%m-%d')
+            
+            if language == 'german':
+                base_filename = f"Anschreiben - {sender_name_no_title} - {date_str} - {company_name}"
+            else:
+                base_filename = f"Cover letter - {sender_name_no_title} - {date_str} - {company_name}"
+            
+            docx_filename = f"output/cover_letters/{base_filename}.docx"
+            docx_file = word_generator.generate_from_template(
+                cover_letter_body,
+                job_data,
+                docx_filename,
+                language=language
+            )
+            
+            # Success!
+            processing_status[job_id]['status'] = 'complete'
+            processing_status[job_id]['progress'] = 100
+            processing_status[job_id]['message'] = 'Cover letter generated successfully!'
+            processing_status[job_id]['result'] = {
+                'company': job_data.get('company_name'),
+                'title': job_data.get('job_title'),
+                'location': job_data.get('location'),
+                'source_url': job_data.get('source_url'),
+                'company_page_url': job_data.get('company_page_url'),
+                'trello_card': status_info.get('result', {}).get('trello_card'),
+                'is_duplicate': job_data.get('is_duplicate', False),
+                'files': {
+                    'docx': str(docx_file),
+                    'pdf': None
+                }
+            }
+            logger.info(f"[{job_id}] Cover letter retry successful!")
+            
+        except Exception as e:
+            logger.exception(f"[{job_id}] Cover letter retry failed: {e}")
+            processing_status[job_id]['status'] = 'cover_letter_failed'
+            processing_status[job_id]['message'] = f'Retry failed: {str(e)}'
+            processing_status[job_id]['progress'] = 100
+    
+    import threading
+    retry_thread = threading.Thread(target=retry_in_background, daemon=True)
+    retry_thread.start()
+    
+    return jsonify({'success': True, 'message': 'Cover letter retry started'})
+
+
+@app.route('/delete/<job_id>', methods=['POST'])
+def delete_job(job_id: str) -> Response:
+    """Delete a job, its files, and Trello card"""
+    try:
+        from src.file_manager import delete_generated_files
+        from src.trello_connect import TrelloConnect
+        from src.database import ApplicationDB
+        
+        # Get job info
+        job_info = processing_status.get(job_id, {})
+        result = job_info.get('result', {})
+        
+        deleted = {
+            'trello_card': False,
+            'docx': False,
+            'pdf': False,
+            'database': False
+        }
+        
+        # 1. Delete Trello card
+        trello_card_url = result.get('trello_card')
+        if trello_card_url:
+            try:
+                # Extract card ID from URL: https://trello.com/c/CARD_ID
+                card_id = trello_card_url.split('/c/')[-1] if '/c/' in trello_card_url else None
+                if card_id:
+                    trello = TrelloConnect()
+                    deleted['trello_card'] = trello.delete_card(card_id)
+            except Exception as e:
+                logger.error(f"[{job_id}] Error deleting Trello card: {e}")
+        
+        # 2. Delete generated files
+        files = result.get('files', {})
+        file_results = delete_generated_files(
+            docx_file=files.get('docx'),
+            pdf_file=files.get('pdf')
+        )
+        deleted['docx'] = file_results.get('docx', False)
+        deleted['pdf'] = file_results.get('pdf', False)
+        
+        # 3. Delete database record
+        try:
+            db = ApplicationDB()
+            # Get source_url from result or job_info (for in-progress jobs)
+            source_url = result.get('source_url') or job_info.get('url')
+            
+            # Try to delete by job_id first
+            deleted['database'] = db.delete_job(job_id=job_id)
+            
+            # If first delete didn't work, try by source_url as fallback
+            if not deleted['database'] and source_url:
+                deleted['database'] = db.delete_job(source_url=source_url)
+                logger.info(f"[{job_id}] Deleted by source_url fallback: {source_url}")
+        except Exception as e:
+            logger.error(f"[{job_id}] Error deleting from database: {e}")
+        
+        # 4. Remove from processing_status
+        if job_id in processing_status:
+            del processing_status[job_id]
+        
+        logger.info(f"[{job_id}] Job deleted successfully. Trello: {deleted['trello_card']}, "
+                   f"DOCX: {deleted['docx']}, PDF: {deleted['pdf']}, DB: {deleted['database']}")
+        
+        return jsonify({
+            'success': True,
+            'deleted': deleted,
+            'message': 'Job deleted successfully'
+        })
+    
+    except Exception as e:
+        logger.error(f"[{job_id}] Error deleting job: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
 
 @app.route('/download/<path:filename>')
 def download(filename: str) -> Response:

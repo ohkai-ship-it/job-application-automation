@@ -68,6 +68,7 @@ class BaseJobScraper(ABC):
             'company_address': None,
             'company_address_line1': None,
             'company_address_line2': None,
+            'company_page_url': None,
             'job_title': None,
             'job_title_clean': None,
             'location': None,
@@ -85,6 +86,37 @@ class BaseJobScraper(ABC):
             'scraped_at': datetime.now().isoformat(),
             'source_url': source_url
         }
+    
+    def _find_company_page_url(self, company_name: Optional[str]) -> Optional[str]:
+        """
+        Search for company page URL using web search.
+        
+        Args:
+            company_name: Name of the company to search for
+            
+        Returns:
+            URL of company page or None if not found
+        """
+        if not company_name:
+            return None
+        
+        try:
+            from .utils.web_search import WebSearcher
+            
+            searcher = WebSearcher(max_results=3, rate_limit_delay=0.5)
+            query = f"{company_name} official website"
+            results = searcher.search(query)
+            
+            if results:
+                # Return the first result's URL
+                self.logger.info(f"Found company page for {company_name}: {results[0].url}")
+                return results[0].url
+            else:
+                self.logger.info(f"No results found for company: {company_name}")
+        except Exception as e:
+            self.logger.warning(f"Could not find company page for {company_name}: {e}")
+        
+        return None
 
 
 class StepstoneScraper(BaseJobScraper):
@@ -327,6 +359,14 @@ class StepstoneScraper(BaseJobScraper):
             if phones:
                 job_data['contact_person']['phone'] = phones[0].strip()
                 self.logger.debug("Contact Phone: %s", job_data['contact_person']['phone'])
+            
+            # 12. Search for company page URL if not already set
+            # Skip web search for now - will be done in background if needed
+            # if not job_data.get('company_page_url') and job_data.get('company_name'):
+            #     company_page_url = self._find_company_page_url(job_data['company_name'])
+            #     if company_page_url:
+            #         job_data['company_page_url'] = company_page_url
+            #         self.logger.debug("Company Page URL: %s", job_data['company_page_url'])
             
             self.logger.info("Scraping completed successfully")
             return job_data

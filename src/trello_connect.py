@@ -576,3 +576,41 @@ class TrelloConnect:
             self.logger.error("Exception creating card: %s", e, exc_info=True)
             print(f"ERROR: Exception creating Trello card: {e}")
             return None
+    
+    def delete_card(self, card_id: str) -> bool:
+        """
+        Delete a Trello card by ID.
+        
+        Args:
+            card_id: The Trello card ID to delete
+            
+        Returns:
+            True if deleted successfully, False otherwise
+        """
+        if not self.api_key or not self.token:
+            self.logger.error("Trello credentials missing")
+            return False
+        
+        if not card_id:
+            self.logger.error("Card ID is required for deletion")
+            return False
+        
+        url = f"{self.base_url}/cards/{card_id}"
+        params = dict(self.auth_params)
+        
+        try:
+            resp = self.requester('DELETE', url, params=params, timeout=10)
+            
+            if getattr(resp, 'status_code', 200) == 200:
+                self.logger.info(f"Deleted Trello card: {card_id}")
+                print(f"✓ Trello card deleted: {card_id}")
+                return True
+            else:
+                self.logger.error(f"Failed to delete card: {resp.status_code}")
+                print(f"✗ Failed to delete Trello card (status {resp.status_code})")
+                return False
+                
+        except Exception as e:
+            self.logger.error(f"Exception deleting card: {e}", exc_info=True)
+            print(f"✗ Exception deleting Trello card: {e}")
+            return False

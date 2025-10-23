@@ -42,7 +42,13 @@ def test_process_and_status_flow(client, monkeypatch):
 
     monkeypatch.setattr("src.app.process_in_background", fake_worker)
 
-    resp = client.post("/process", json={"url": "https://example.com/job"})
+    # POST with at least one processing option (create_trello_card=True)
+    resp = client.post("/process", json={
+        "url": "https://example.com/job",
+        "create_trello_card": True,
+        "generate_documents": False,
+        "generate_pdf": False
+    })
     assert resp.status_code == 200
     job_id = resp.get_json()["job_id"]
 

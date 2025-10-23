@@ -105,7 +105,8 @@ def process_job_posting(
     generate_pdf: bool = False,  # Disabled by default to save time for manual edits
     create_trello_card: bool = True,  # NEW: Whether to create Trello card
     target_language: str = 'auto',  # NEW: Target language (auto, de, en)
-    skip_duplicate_check: bool = False  # Allow skipping duplicate check for testing
+    skip_duplicate_check: bool = False,  # Allow skipping duplicate check for testing
+    progress_callback: Optional[callable] = None  # NEW: Callback to report progress
 ) -> Dict[str, Any]:
     """
     Complete workflow: Scrape job posting, create Trello card, generate cover letter and PDF
@@ -117,6 +118,8 @@ def process_job_posting(
         create_trello_card (bool): Whether to create a Trello card (default: True)
         target_language (str): Target language for cover letter (auto, de, en). Default: auto-detect
         skip_duplicate_check (bool): Skip duplicate detection (for testing/re-processing)
+        progress_callback (callable): Optional callback function to report progress. Called as:
+                                     progress_callback(progress=0-100, message='...', job_title='...', company_name='...')
         
     Returns:
         dict: Result with status and data
@@ -162,6 +165,9 @@ def process_job_posting(
     logger.info("STEP 1: Scraping job posting...")
     logger.info("%s", "-" * 80)
     
+    if progress_callback:
+        progress_callback(progress=5, message='Gathering Information')
+    
     # Use new job-source-aware scraping
     job_data = scrape_job_posting(url)
     
@@ -181,6 +187,27 @@ def process_job_posting(
     
     logger.info("Successfully scraped job data!")
     
+    # Step 1b: Search for company page URL if not already found
+    if not job_data.get('company_page_url') and job_data.get('company_name'):
+        logger.info("Searching for company page URL...")
+        try:
+            from scraper import StepstoneScraper  # Import here to use the method
+            scraper = StepstoneScraper()
+            company_page_url = scraper._find_company_page_url(job_data['company_name'])
+            if company_page_url:
+                job_data['company_page_url'] = company_page_url
+                logger.info(f"Found company page: {company_page_url}")
+        except Exception as e:
+            logger.warning(f"Could not find company page: {e}")
+    
+    if progress_callback:
+        progress_callback(
+            progress=15,
+            message='Gathering Information',
+            job_title=job_data.get('job_title', ''),
+            company_name=job_data.get('company_name', '')
+        )
+    
     # Save scraped data
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
     # Skip saving JSON file
@@ -193,6 +220,9 @@ def process_job_posting(
         logger.info("%s", "=" * 80)
         logger.info("STEP 2: Creating Trello card...")
         logger.info("%s", "-" * 80)
+        
+        if progress_callback:
+            progress_callback(progress=20, message='Creating Trello Card')
         
         trello = TrelloConnect()
         card = trello.create_card_from_job_data(job_data)
@@ -213,11 +243,15 @@ def process_job_posting(
     cover_letter_file = None
     docx_file = None
     pdf_file = None
+    cover_letter_error = None  # NEW: Track cover letter generation errors
     
     if generate_cover_letter:
         logger.info("%s", "=" * 80)
         logger.info("STEP 3: Generating cover letter...")
         logger.info("%s", "-" * 80)
+        
+        if progress_callback:
+            progress_callback(progress=60, message='Generating Cover Letter with AI')
         
         try:
             # Check if we should use placeholder (for testing or when OpenAI is unavailable)
@@ -352,6 +386,9 @@ def process_job_posting(
             logger.info("STEP 4: Creating Word document...")
             logger.info("%s", "-" * 80)
             
+            if progress_callback:
+                progress_callback(progress=80, message='Creating Word document')
+            
             word_generator = WordCoverLetterGenerator()
             
             # Generate filename based on language
@@ -385,6 +422,9 @@ def process_job_posting(
                 logger.info("STEP 5: Converting to PDF...")
                 logger.info("%s", "-" * 80)
                 
+                if progress_callback:
+                    progress_callback(progress=90, message='Saving PDF')
+                
                 pdf_filename = docx_filename.replace('.docx', '.pdf')
                 pdf_file = word_generator.convert_to_pdf(docx_file, pdf_filename)
                 
@@ -393,6 +433,7 @@ def process_job_posting(
             
         except Exception as e:
             logger.warning("Cover letter generation failed: %s", e)
+            cover_letter_error = str(e)  # NEW: Store error for retry
             report_error(
                 "Cover letter generation failed",
                 exc=e,
@@ -435,8 +476,8 @@ def process_job_posting(
                     source_url=url,
                     company_name=job_data.get('company_name', 'Unknown'),
                     job_title=job_data.get('job_title', 'Unknown'),
-                    trello_card_id=card.get('id'),
-                    trello_card_url=card.get('shortUrl'),
+                    trello_card_id=card.get('id') if card else None,
+                    trello_card_url=card.get('shortUrl') if card else None,
                     docx_file_path=str(docx_file) if docx_file else None,
                     ai_model=ai_model if generate_cover_letter else None,
                     language=language_code if generate_cover_letter else None,
@@ -469,6 +510,16 @@ def process_job_posting(
         logger.info("  Cover Letter (DOCX): %s", docx_file)
     if pdf_file:
         logger.info("  Cover Letter (PDF): %s", pdf_file)
+    
+    # NEW: If cover letter failed, return special status
+    if cover_letter_error and generate_cover_letter:
+        return {
+            'status': 'cover_letter_failed',
+            'job_data': job_data,
+            'trello_card': card,
+            'cover_letter_error': cover_letter_error,
+            'is_duplicate': is_duplicate
+        }
     
     return {
         'status': 'success',
