@@ -133,8 +133,20 @@ def process() -> Response:
         return jsonify({'error': 'No URL provided'}), 400
     
     # Get settings from request
-    create_trello_card = data.get('create_trello_card', True)
+    create_trello_card = data.get('create_trello_card', False)
+    generate_documents = data.get('generate_documents', False)
     generate_pdf = data.get('generate_pdf', False)
+    target_language = data.get('target_language', 'auto')  # NEW: Target language (auto, de, en)
+    
+    # Validation: At least one option must be selected
+    if not create_trello_card and not generate_documents:
+        return jsonify({
+            'error': 'At least one of "Create Trello Card" or "Generate Documents" must be selected'
+        }), 400
+    
+    # PDF only makes sense if generating documents
+    if generate_pdf and not generate_documents:
+        generate_pdf = False  # Silently ignore orphaned PDF flag
     
     # Generate unique job ID
     job_id = f"job_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
@@ -151,12 +163,22 @@ def process() -> Response:
     }
     
     # Process in background thread with settings
-    thread = threading.Thread(target=process_in_background, args=(job_id, url, create_trello_card, generate_pdf))
+    thread = threading.Thread(
+        target=process_in_background,
+        args=(job_id, url, create_trello_card, generate_documents, generate_pdf, target_language)
+    )
     thread.start()
     
     return jsonify({'job_id': job_id})
 
-def process_in_background(job_id: str, url: str, create_trello_card: bool = True, generate_pdf: bool = False) -> None:
+def process_in_background(
+    job_id: str,
+    url: str,
+    create_trello_card: bool = True,
+    generate_documents: bool = True,
+    generate_pdf: bool = False,
+    target_language: str = 'auto'  # NEW: Target language (auto, de, en)
+) -> None:
     """Process job in background with real-time progress updates"""
     try:
         logger.info(f"[{job_id}] Starting background processing for: {url}")
@@ -170,11 +192,10 @@ def process_in_background(job_id: str, url: str, create_trello_card: bool = True
         # This gives frontend time to grab the data during early aggressive polling
         logger.info(f"[{job_id}] Quick scrape to extract job info...")
         try:
-            from src.scraper import detect_job_source, scrape_stepstone_job
-            from src.linkedin_scraper import scrape_linkedin_job as scrape_linkedin
+            from main import detect_job_source, scrape_job_posting
             
             source = detect_job_source(url)
-            job_data = scrape_linkedin(url) if source == 'linkedin' else scrape_stepstone_job(url)
+            job_data = scrape_job_posting(url)
             
             if job_data:
                 # Set the fields immediately - frontend will poll and catch them
@@ -241,7 +262,13 @@ def process_in_background(job_id: str, url: str, create_trello_card: bool = True
         animator.start()
         
         # NOW process the job with the specified settings
-        result = process_job_posting(url, generate_cover_letter=True, generate_pdf=generate_pdf, create_trello_card=create_trello_card)
+        result = process_job_posting(
+            url,
+            generate_cover_letter=generate_documents,
+            generate_pdf=generate_pdf,
+            create_trello_card=create_trello_card,
+            target_language=target_language
+        )
         logger.info(f"[{job_id}] Process result status: {result.get('status')}")
         
         # Wait for animator to finish
@@ -269,6 +296,7 @@ def process_in_background(job_id: str, url: str, create_trello_card: bool = True
                     'title': result['job_data'].get('job_title'),
                     'location': result['job_data'].get('location'),
                     'trello_card': trello_card_url,
+                    'is_duplicate': result.get('is_duplicate', False),  # NEW: Flag indicating duplicate
                     'files': {
                         # 'json': to_str(result.get('data_file')),  # JSON file generation disabled
                         # 'txt': to_str(result.get('cover_letter_text_file')),  # TXT file generation disabled

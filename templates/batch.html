@@ -56,7 +56,7 @@
         
         .main-grid {
             display: grid;
-            grid-template-columns: 1fr 1fr;
+            grid-template-columns: 1fr;
             gap: 30px;
             margin-bottom: 30px;
         }
@@ -268,6 +268,17 @@
             color: var(--error);
         }
         
+        .status-badge.duplicate {
+            background: rgba(245, 158, 11, 0.1);
+            color: #f59e0b;
+        }
+        
+        .status-badge.duplicate::before {
+            content: '';
+            width: 0;
+            height: 0;
+        }
+        
         .status-badge::before {
             content: '';
             width: 8px;
@@ -280,6 +291,9 @@
             display: flex;
             gap: 8px;
             justify-content: flex-end;
+            white-space: nowrap;
+            flex-wrap: nowrap;
+            align-items: center;
         }
         
         .action-link {
@@ -446,12 +460,13 @@
             display: grid;
             grid-template-columns: 1fr 1fr;
             gap: 30px;
+            align-items: start;
         }
         
         .settings-group {
             display: flex;
             flex-direction: column;
-            gap: 15px;
+            gap: 8px;
         }
         
         .checkbox-group {
@@ -619,38 +634,7 @@
             </div>
             
             <!-- Right Column: Results & Files -->
-            <div class="card">
-                <div class="card-title">Results Summary</div>
-                
-                <div class="results-grid">
-                    <!-- Stats Cards -->
-                    <div class="summary-stats">
-                        <div class="stat-card">
-                            <div class="stat-number success" id="statLetters">0</div>
-                            <div class="stat-label">Cover Letters</div>
-                        </div>
-                        <div class="stat-card">
-                            <div class="stat-number success" id="statCards">0</div>
-                            <div class="stat-label">Trello Cards</div>
-                        </div>
-                        <div class="stat-card">
-                            <div class="stat-number error" id="statErrors">0</div>
-                            <div class="stat-label">Errors</div>
-                        </div>
-                    </div>
-                    
-                    <!-- Recent Files -->
-                    <div class="recent-files">
-                        <div class="recent-files-title">📂 Recent Files</div>
-                        <div id="recentFilesList">
-                            <div class="empty-state" style="padding: 20px 0;">
-                                <div class="empty-state-text">No files generated yet</div>
-                            </div>
-                        </div>
-                        <a href="/outputs" class="view-all-link" target="_blank">View All Outputs →</a>
-                    </div>
-                </div>
-            </div>
+            
         </div>
         
         <!-- Settings Section -->
@@ -659,17 +643,44 @@
             
             <div class="settings-grid">
                 <div class="settings-group">
-                    <div class="checkbox-group">
-                        <input type="checkbox" id="generatePdfCheckbox" checked>
-                        <label for="generatePdfCheckbox">Generate PDF</label>
-                    </div>
-                    <div class="checkbox-group">
-                        <input type="checkbox" id="createTrelloCheckbox" checked>
+                    <!-- 1. Create Trello Cards -->
+                    <div class="checkbox-group" style="margin-top: 8px;">
+                        <input type="checkbox" id="createTrelloCheckbox">
                         <label for="createTrelloCheckbox">Create Trello Cards</label>
                     </div>
-                    <div class="checkbox-group">
-                        <input type="checkbox" id="openFilesCheckbox">
-                        <label for="openFilesCheckbox">Open files after generation</label>
+                    
+                    <!-- 2. AI generated Cover Letter Heading -->
+                    <div style="margin-top: 20px; margin-bottom: 8px;">
+                        <strong style="display: block;">AI generated Cover Letter</strong>
+                    </div>
+                    
+                    <!-- 3. Generate Word Cover Letter (aligned with heading) -->
+                    <div class="checkbox-group" style="margin-left: 0px; margin-bottom: 6px;">
+                        <input type="checkbox" id="generateDocumentsCheckbox" checked>
+                        <label for="generateDocumentsCheckbox">Generate Cover Letter (MS Word)</label>
+                    </div>
+                    
+                    <!-- 4. Optional: Save as PDF (indented 20px from Generate) -->
+                    <div class="checkbox-group" id="pdfCheckboxGroup" style="margin-left: 20px; margin-bottom: 8px;">
+                        <input type="checkbox" id="generatePdfCheckbox">
+                        <label for="generatePdfCheckbox">Optional: Save as .pdf</label>
+                    </div>
+                    
+                    <!-- 5. Language Model Dropdown (aligned with Generate Cover Letter) -->
+                    <div style="margin-left: 0px; margin-bottom: 8px;">
+                        <label for="llmSelect" style="display: block; margin-bottom: 4px; font-size: 0.95em;">Language model:</label>
+                        <select id="llmSelect">
+                            <option value="gpt-4o-mini">GPT-4o Mini (Fast, Affordable)</option>
+                            <option value="gpt-4o">GPT-4o (Best Quality)</option>
+                            <option value="claude-3-5-sonnet" disabled>Claude 3.5 Sonnet (Coming soon)</option>
+                            <option value="claude-3-haiku" disabled>Claude 3 Haiku (Coming soon)</option>
+                            <option value="gemini-1.5-flash" disabled>Gemini 1.5 Flash (Coming soon)</option>
+                            <option value="gemini-1.5-pro" disabled>Gemini 1.5 Pro (Coming soon)</option>
+                        </select>
+                    </div>
+                    
+                    <div id="validationMessage" style="color: #ef4444; font-size: 0.9em; margin-top: 12px; display: none;">
+                        ⚠️ Select at least one option above
                     </div>
                 </div>
                 
@@ -707,10 +718,13 @@
         // Current processing info
         let currentJobStep = 'scraping';
         
-        // Count URLs
-        document.getElementById('urlInput').addEventListener('input', function() {
-            const urls = this.value.trim().split('\n').filter(url => url.trim().length > 0);
-            document.getElementById('urlCount').textContent = urls.length;
+        // Initialize event listeners after DOM is loaded
+        document.addEventListener('DOMContentLoaded', function() {
+            // Count URLs
+            document.getElementById('urlInput').addEventListener('input', function() {
+                const urls = this.value.trim().split('\n').filter(url => url.trim().length > 0);
+                document.getElementById('urlCount').textContent = urls.length;
+            });
         });
         
         // Paste from clipboard
@@ -774,12 +788,46 @@
         
         // Process all jobs
         function processAllJobs() {
-            const urls = document.getElementById('urlInput').value.trim().split('\n').filter(url => url.trim().length > 0);
+            try {
+                const urlInput = document.getElementById('urlInput');
+                
+                if (!urlInput) {
+                    alert('ERROR: urlInput element not found!');
+                    return;
+                }
+                
+                const inputValue = urlInput.value;
+                const urls = inputValue.trim().split('\n').filter(url => url.trim().length > 0);
+                
+                if (urls.length === 0) {
+                    alert('Please paste job URLs first');
+                    return;
+                }
+                
+                // Get processing options
+                const createTrello = document.getElementById('createTrelloCheckbox').checked;
+                const generateDocuments = document.getElementById('generateDocumentsCheckbox').checked;
+                const generatePdf = document.getElementById('generatePdfCheckbox').checked;
+                
+                // Validate: at least one option must be selected
+                if (!createTrello && !generateDocuments) {
+                    const validationMsg = document.getElementById('validationMessage');
+                    if (validationMsg) {
+                        validationMsg.style.display = 'block';
+                    }
+                    alert('Please select at least one processing option:\n- Create Trello Cards\n- Generate Documents');
+                    return;
+                }
+                
+                // Hide validation message if showing
+                const validationMsg = document.getElementById('validationMessage');
+                if (validationMsg) {
+                    validationMsg.style.display = 'none';
+                }
+                
+                console.log('Processing ' + urls.length + ' URLs with options:', { createTrello, generateDocuments, generatePdf });
             
-            if (urls.length === 0) {
-                alert('Please paste job URLs first');
-                return;
-            }
+            const targetLanguage = document.getElementById('languageSelect').value;
             
             queue = urls.map((url, index) => ({
                 id: `job_${Date.now()}_${index}`,
@@ -787,7 +835,12 @@
                 status: 'queued',
                 title: 'Loading...',
                 company: 'Loading...',
-                progress: 0
+                progress: 0,
+                // Store processing options with each job
+                createTrello: createTrello,
+                generateDocuments: generateDocuments,
+                generatePdf: generatePdf,
+                targetLanguage: targetLanguage
             }));
             
             processing = true;
@@ -800,7 +853,11 @@
             document.getElementById('clearAllBtn').style.display = 'none';
             document.getElementById('stopAllBtn').style.display = 'inline-block';
             
+            console.log('Starting to process', queue.length, 'jobs');
             processNextJob();
+            } catch (error) {
+                console.error('processAllJobs error:', error);
+            }
         }
         
         // Process next job
@@ -808,6 +865,7 @@
             const job = queue.find(j => j.status === 'queued');
             
             if (!job) {
+                console.log('No more queued jobs, processing complete');
                 processing = false;
                 document.getElementById('processAllBtn').disabled = false;
                 document.getElementById('clearAllBtn').style.display = 'inline-block';
@@ -816,28 +874,35 @@
                 return;
             }
             
+            console.log('Processing job:', job.url);
+            
             job.status = 'processing';
             updateQueueDisplay();
             updateProgressBar();
             
             try {
-                // Get current settings
-                const createTrello = document.getElementById('createTrelloCheckbox').checked;
-                const generatePdf = document.getElementById('generatePdfCheckbox').checked;
-                const openFiles = document.getElementById('openFilesCheckbox').checked;
+                // Use settings stored with the job
+                const payload = { 
+                    url: job.url,
+                    create_trello_card: job.createTrello,
+                    generate_documents: job.generateDocuments,
+                    generate_pdf: job.generatePdf,
+                    target_language: job.targetLanguage
+                };
+                
+                console.log('Processing job with options:', payload);
                 
                 const response = await fetch('/process', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ 
-                        url: job.url,
-                        create_trello_card: createTrello,
-                        generate_pdf: generatePdf,
-                        open_files: openFiles
-                    })
+                    body: JSON.stringify(payload)
                 });
                 
+                console.log('Response status:', response.status);
+                
                 const data = await response.json();
+                
+                console.log('Response data:', data);
                 
                 if (data.error) {
                     job.status = 'error';
@@ -853,6 +918,7 @@
                     pollForEarlyData(job);
                 }
             } catch (error) {
+                console.error('Error processing job:', error);
                 job.status = 'error';
                 job.error = error.message;
                 results.errors++;
@@ -921,6 +987,7 @@
                     job.title = data.result.title || 'Unknown';
                     job.company = data.result.company || 'Unknown';
                     job.result = data.result;
+                    job.isDuplicate = data.result.is_duplicate || false;  // Mark as duplicate if detected
                     job.progress = 100; // Mark as 100% complete
                     results.completed++;
                     updateStats();
@@ -974,17 +1041,26 @@
             
             queue.forEach(job => {
                 const row = document.createElement('tr');
+                
+                // Build status HTML with optional duplicate warning
+                let statusHTML = `<span class="status-badge ${job.status}">
+                    ${job.status.charAt(0).toUpperCase() + job.status.slice(1)}
+                </span>`;
+                
+                if (job.isDuplicate) {
+                    statusHTML += ` <span class="status-badge duplicate" title="This job posting was already processed before">⚠️ Duplicate</span>`;
+                }
+                
                 row.innerHTML = `
                     <td>${job.title}</td>
                     <td>${job.company}</td>
                     <td>
-                        <span class="status-badge ${job.status}">
-                            ${job.status.charAt(0).toUpperCase() + job.status.slice(1)}
-                        </span>
+                        ${statusHTML}
                     </td>
                     <td class="actions">
                         ${job.status === 'completed' ? `
-                            <a href="/download/${job.result.files.docx}" class="action-link download">Word</a>
+                            ${job.result.files.docx ? `<a href="/download/${job.result.files.docx}" download class="action-link download">Word</a>` : `<span class="action-link download" style="opacity: 0.4; cursor: not-allowed; pointer-events: none;">Word</span>`}
+                            ${job.result.files.pdf ? `<a href="/download/${job.result.files.pdf}" target="_blank" class="action-link download">PDF</a>` : `<span class="action-link download" style="opacity: 0.4; cursor: not-allowed; pointer-events: none;">PDF</span>`}
                             ${job.result.trello_card ? `<a href="${job.result.trello_card}" target="_blank" class="action-link trello">Trello</a>` : `<span class="action-link trello" style="opacity: 0.4; cursor: not-allowed; pointer-events: none;">Trello</span>`}
                         ` : job.status === 'error' ? `<span style="color: #ef4444; font-size: 0.85em;">Failed</span>` : ''}
                     </td>
@@ -1042,15 +1118,115 @@
         
         // Update stats
         function updateStats() {
-            document.getElementById('statLetters').textContent = results.completed;
-            document.getElementById('statCards').textContent = results.completed;
-            document.getElementById('statErrors').textContent = results.errors;
+            // Stats elements were removed in UI redesign - this is now optional
+            const statLetters = document.getElementById('statLetters');
+            const statCards = document.getElementById('statCards');
+            const statErrors = document.getElementById('statErrors');
+            
+            if (statLetters) statLetters.textContent = results.completed;
+            if (statCards) statCards.textContent = results.completed;
+            if (statErrors) statErrors.textContent = results.errors;
         }
         
-        // Allow Enter to submit in URL input
-        document.getElementById('urlInput').addEventListener('keydown', function(e) {
-            if (e.ctrlKey && e.key === 'Enter') {
-                processAllJobs();
+        // Initialize event listeners after DOM is loaded
+        document.addEventListener('DOMContentLoaded', function() {
+            // Handle PDF checkbox - enable/disable based on Documents checkbox
+            const generateDocumentsCheckbox = document.getElementById('generateDocumentsCheckbox');
+            const generatePdfCheckbox = document.getElementById('generatePdfCheckbox');
+            const pdfCheckboxGroup = document.getElementById('pdfCheckboxGroup');
+            const createTrelloCheckbox = document.getElementById('createTrelloCheckbox');
+            
+            // Helper function to validate and show/hide validation message
+            function updateValidationMessage() {
+                const createTrello = createTrelloCheckbox ? createTrelloCheckbox.checked : false;
+                const generateDocuments = generateDocumentsCheckbox ? generateDocumentsCheckbox.checked : false;
+                const validationMsg = document.getElementById('validationMessage');
+                
+                if (validationMsg) {
+                    if (!createTrello && !generateDocuments) {
+                        validationMsg.style.display = 'block';
+                    } else {
+                        validationMsg.style.display = 'none';
+                    }
+                }
+            }
+            
+            if (generateDocumentsCheckbox && generatePdfCheckbox && pdfCheckboxGroup) {
+                // Update PDF checkbox state when Documents checkbox changes
+                generateDocumentsCheckbox.addEventListener('change', function() {
+                    if (this.checked) {
+                        // Enable PDF checkbox
+                        generatePdfCheckbox.disabled = false;
+                        pdfCheckboxGroup.style.opacity = '1';
+                        pdfCheckboxGroup.style.pointerEvents = 'auto';
+                    } else {
+                        // Disable PDF checkbox and uncheck it
+                        generatePdfCheckbox.disabled = true;
+                        generatePdfCheckbox.checked = false;
+                        pdfCheckboxGroup.style.opacity = '0.5';
+                        pdfCheckboxGroup.style.pointerEvents = 'none';
+                    }
+                    // Check validation state
+                    updateValidationMessage();
+                });
+                
+                // Check validation when Trello checkbox changes
+                if (createTrelloCheckbox) {
+                    createTrelloCheckbox.addEventListener('change', function() {
+                        updateValidationMessage();
+                    });
+                }
+                
+                // Handle LLM dropdown - enable/disable based on Documents checkbox
+                const llmSelect = document.getElementById('llmSelect');
+                if (llmSelect && generateDocumentsCheckbox) {
+                    generateDocumentsCheckbox.addEventListener('change', function() {
+                        if (this.checked) {
+                            // Enable LLM dropdown
+                            llmSelect.disabled = false;
+                            llmSelect.style.opacity = '1';
+                            llmSelect.style.pointerEvents = 'auto';
+                        } else {
+                            // Disable LLM dropdown
+                            llmSelect.disabled = true;
+                            llmSelect.style.opacity = '0.5';
+                            llmSelect.style.pointerEvents = 'none';
+                        }
+                    });
+                    
+                    // Set initial state
+                    if (!generateDocumentsCheckbox.checked) {
+                        llmSelect.disabled = true;
+                        llmSelect.style.opacity = '0.5';
+                        llmSelect.style.pointerEvents = 'none';
+                    }
+                }
+                
+                // Set initial state for PDF
+                if (!generateDocumentsCheckbox.checked) {
+                    generatePdfCheckbox.disabled = true;
+                    pdfCheckboxGroup.style.opacity = '0.5';
+                    pdfCheckboxGroup.style.pointerEvents = 'none';
+                }
+                
+                // Initial validation check
+                updateValidationMessage();
+            }
+            
+            // Count URLs
+            const urlInput = document.getElementById('urlInput');
+            if (urlInput) {
+                urlInput.addEventListener('input', function() {
+                    const urls = this.value.trim().split('\n').filter(url => url.trim().length > 0);
+                    document.getElementById('urlCount').textContent = urls.length;
+                });
+                
+                // Allow Enter to submit in URL input
+                urlInput.addEventListener('keydown', function(e) {
+                    if (e.ctrlKey && e.key === 'Enter') {
+                        processAllJobs();
+                    }
+                });
             }
         });
         

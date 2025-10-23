@@ -103,6 +103,8 @@ def process_job_posting(
     url: str,
     generate_cover_letter: bool = True,
     generate_pdf: bool = False,  # Disabled by default to save time for manual edits
+    create_trello_card: bool = True,  # NEW: Whether to create Trello card
+    target_language: str = 'auto',  # NEW: Target language (auto, de, en)
     skip_duplicate_check: bool = False  # Allow skipping duplicate check for testing
 ) -> Dict[str, Any]:
     """
@@ -110,8 +112,10 @@ def process_job_posting(
     
     Args:
         url (str): Stepstone job posting URL
-        generate_cover_letter (bool): Whether to generate a cover letter
+        generate_cover_letter (bool): Whether to generate a cover letter and Word document
         generate_pdf (bool): Whether to convert to PDF (default: False, as manual edits are needed)
+        create_trello_card (bool): Whether to create a Trello card (default: True)
+        target_language (str): Target language for cover letter (auto, de, en). Default: auto-detect
         skip_duplicate_check (bool): Skip duplicate detection (for testing/re-processing)
         
     Returns:
@@ -183,22 +187,26 @@ def process_job_posting(
     # filename = DATA_DIR / f"scraped_job_{timestamp}.json"
     # save_to_json(job_data, str(filename))
     
-    # Step 2: Create Trello card
-    logger.info("%s", "=" * 80)
-    logger.info("STEP 2: Creating Trello card...")
-    logger.info("%s", "-" * 80)
-    
-    trello = TrelloConnect()
-    card = trello.create_card_from_job_data(job_data)
-    
-    if not card:
-        logger.error("Failed to create Trello card!")
-        return {
-            'status': 'partial',
-            'step': 'trello',
-            'job_data': job_data,
-            'error': 'Failed to create card'
-        }
+    # Step 2: Create Trello card (optional)
+    card = None
+    if create_trello_card:
+        logger.info("%s", "=" * 80)
+        logger.info("STEP 2: Creating Trello card...")
+        logger.info("%s", "-" * 80)
+        
+        trello = TrelloConnect()
+        card = trello.create_card_from_job_data(job_data)
+        
+        if not card:
+            logger.error("Failed to create Trello card!")
+            return {
+                'status': 'partial',
+                'step': 'trello',
+                'job_data': job_data,
+                'error': 'Failed to create card'
+            }
+    else:
+        logger.info("Skipping Trello card creation (disabled)")
     
     # Step 3: Generate cover letter (optional)
     cover_letter_text = None
@@ -246,7 +254,14 @@ def process_job_posting(
                     "how my skills can contribute to your team's objectives and organizational goals.",
                 ]
                 cover_letter_body = " ".join(placeholder_words)
-                language = 'english'  # Default to English for placeholder
+                
+                # Determine language: use target_language if forced, otherwise default to English for placeholder
+                if target_language == 'de':
+                    language = 'german'
+                elif target_language == 'en':
+                    language = 'english'
+                else:
+                    language = 'english'  # Default to English for placeholder
                 
                 # Generate salutation and valediction using the generator if available
                 if ai_generator:
@@ -275,10 +290,27 @@ def process_job_posting(
             else:
                 # Generate AI text
                 ai_generator = CoverLetterGenerator()
-                cover_letter_body = ai_generator.generate_cover_letter(job_data)
                 
-                # Detect language
-                language = ai_generator.detect_language(job_data.get('job_description', ''))
+                # Convert target_language value to format expected by generate_cover_letter
+                # UI sends: 'auto', 'de', 'en'
+                # generate_cover_letter expects: None for auto-detect, or 'german', 'english'
+                if target_language == 'de':
+                    lang_for_generation = 'german'
+                elif target_language == 'en':
+                    lang_for_generation = 'english'
+                else:
+                    lang_for_generation = None  # auto-detect
+                
+                cover_letter_body = ai_generator.generate_cover_letter(job_data, target_language=lang_for_generation)
+                
+                # Determine language: use target_language if forced, otherwise detect from job description
+                if target_language == 'de':
+                    language = 'german'
+                elif target_language == 'en':
+                    language = 'english'
+                else:
+                    # Auto-detect from job description
+                    language = ai_generator.detect_language(job_data.get('job_description', ''))
                 
                 # Combine salutation + body + valediction for complete letter
                 salutation = job_data.get('cover_letter_salutation', '')
@@ -428,7 +460,8 @@ def process_job_posting(
     logger.info("  Company: %s", job_data.get('company_name', 'N/A'))
     logger.info("  Position: %s", job_data.get('job_title', 'N/A'))
     logger.info("  Location: %s", job_data.get('location', 'N/A'))
-    logger.info("  Trello Card: %s", card['shortUrl'])
+    if card:
+        logger.info("  Trello Card: %s", card['shortUrl'])
     # logger.info("  Data saved: %s", filename)  # JSON file saving disabled
     if cover_letter_file:
         logger.info("  Cover Letter (TXT): %s", cover_letter_file)
@@ -444,7 +477,8 @@ def process_job_posting(
         # 'data_file': filename,  # JSON file saving disabled
         'cover_letter_text_file': cover_letter_file,
         'cover_letter_docx_file': docx_file,
-        'cover_letter_pdf_file': pdf_file
+        'cover_letter_pdf_file': pdf_file,
+        'is_duplicate': is_duplicate  # NEW: Flag indicating if this was a duplicate job posting
     }
 
 

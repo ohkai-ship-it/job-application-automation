@@ -48,7 +48,7 @@ def test_process_job_posting_happy_path(monkeypatch, tmp_path):
             return "english"
         def detect_seniority(self, *_, **__):
             return "mid"
-        def generate_cover_letter(self, *_):
+        def generate_cover_letter(self, *_, **__):  # Accept target_language kwarg
             return "Short body text for testing."
         def generate_salutation(self, job_data, language, formality, seniority):
             return "Dear Hiring Manager,"
