@@ -759,13 +759,14 @@
         
         // Cancel all jobs
         async function cancelAll() {
-            if (!confirm('Are you sure you want to cancel all jobs and clean up the database?')) {
+            if (!confirm('Are you sure you want to cancel all processing? (Jobs will remain in the queue)')) {
                 return;
             }
             
             processing = false;
             paused = false;
-            queue = [];
+            // Don't clear the queue - keep jobs so they can be viewed/resumed
+            // queue = [];
             
             try {
                 const response = await fetch('/cancel', {
@@ -774,13 +775,13 @@
                 });
                 
                 if (response.ok) {
-                    console.log('All jobs cancelled and database cleaned');
+                    console.log('Processing cancelled - jobs remain in queue');
                 }
             } catch (error) {
                 console.error('Error cancelling jobs:', error);
             }
             
-            // Reset UI (keep URLs in input field)
+            // Reset UI (keep URLs in input field, keep queue in display)
             document.getElementById('progressSection').style.display = 'none';
             document.getElementById('processAllBtn').disabled = false;
             document.getElementById('stopAllBtn').style.display = 'none';
@@ -832,7 +833,8 @@
             
             const targetLanguage = document.getElementById('languageSelect').value;
             
-            queue = urls.map((url, index) => ({
+            // Create new job entries
+            const newJobs = urls.map((url, index) => ({
                 id: `job_${Date.now()}_${index}`,
                 url: url.trim(),
                 status: 'queued',
@@ -845,6 +847,9 @@
                 generatePdf: generatePdf,
                 targetLanguage: targetLanguage
             }));
+            
+            // Append new jobs to existing queue instead of replacing it
+            queue = queue.concat(newJobs);
             
             processing = true;
             results.completed = 0;
