@@ -110,18 +110,13 @@ def index() -> str:
 
 @app.route('/batch')
 def batch() -> str:
-    """Batch processor page"""
+    """Batch processing interface"""
     return render_template('batch.html')
 
 @app.route('/classic')
 def classic() -> str:
     """Classic single-URL processor (legacy)"""
     return render_template('index.html')
-
-@app.route('/batch')
-def batch() -> str:
-    """Batch processing interface"""
-    return render_template('batch.html')
 
 @app.route('/favicon.ico')
 def favicon() -> Response:
