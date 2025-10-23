@@ -26,7 +26,7 @@ def test_index_route(client):
 
 def test_process_and_status_flow(client, monkeypatch):
     # Fake background worker to immediately mark complete
-    def fake_worker(job_id, url):
+    def fake_worker(job_id, url, create_trello_card=True, generate_documents=True, generate_pdf=False, target_language='auto'):
         processing_status[job_id] = {
             "status": "complete",
             "message": "done",
