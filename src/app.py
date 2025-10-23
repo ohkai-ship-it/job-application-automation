@@ -118,6 +118,11 @@ def classic() -> str:
     """Classic single-URL processor (legacy)"""
     return render_template('index.html')
 
+@app.route('/batch')
+def batch() -> str:
+    """Batch processing interface"""
+    return render_template('batch.html')
+
 @app.route('/favicon.ico')
 def favicon() -> Response:
     """Prevent noisy 404s from browser favicon requests."""
@@ -372,6 +377,79 @@ def download(filename: str) -> Response:
         logger.exception(f"Download error for {filename}: {e}")
         return jsonify({'error': str(e)}), 404
 
+@app.route('/api/recent-files')
+def get_recent_files() -> Response:
+    """Get recently generated output files (cover letters, DOCX, PDF, etc.)
+    
+    Query params:
+      - limit: int (default 10, max 50)
+    """
+    try:
+        limit_str = request.args.get('limit', '10')
+        try:
+            limit = max(1, min(50, int(limit_str)))
+        except ValueError:
+            limit = 10
+
+        files = []
+        
+        # Get cover letters (TXT files)
+        cover_letters_dir = OUTPUT_DIR / 'cover_letters'
+        if cover_letters_dir.exists():
+            for filepath in cover_letters_dir.glob('*.txt'):
+                if not filepath.name.startswith('.'):
+                    try:
+                        stat = filepath.stat()
+                        files.append({
+                            'name': filepath.name,
+                            'type': 'cover_letter',
+                            'path': f'cover_letters/{filepath.name}',
+                            'size': stat.st_size,
+                            'modified': datetime.fromtimestamp(stat.st_mtime).isoformat(),
+                        })
+                    except Exception:
+                        pass
+        
+        # Get DOCX files
+        if (OUTPUT_DIR / 'cover_letters').exists():
+            for filepath in (OUTPUT_DIR / 'cover_letters').glob('*.docx'):
+                if not filepath.name.startswith('.'):
+                    try:
+                        stat = filepath.stat()
+                        files.append({
+                            'name': filepath.name,
+                            'type': 'docx',
+                            'path': f'cover_letters/{filepath.name}',
+                            'size': stat.st_size,
+                            'modified': datetime.fromtimestamp(stat.st_mtime).isoformat(),
+                        })
+                    except Exception:
+                        pass
+        
+        # Get PDF files
+        if (OUTPUT_DIR / 'cover_letters').exists():
+            for filepath in (OUTPUT_DIR / 'cover_letters').glob('*.pdf'):
+                if not filepath.name.startswith('.'):
+                    try:
+                        stat = filepath.stat()
+                        files.append({
+                            'name': filepath.name,
+                            'type': 'pdf',
+                            'path': f'cover_letters/{filepath.name}',
+                            'size': stat.st_size,
+                            'modified': datetime.fromtimestamp(stat.st_mtime).isoformat(),
+                        })
+                    except Exception:
+                        pass
+
+        # Sort by modification time, most recent first
+        files.sort(key=lambda f: f['modified'], reverse=True)
+        
+        return jsonify({'files': files[:limit]})
+    except Exception as e:
+        logger.exception("Error loading recent files")
+        return jsonify({'files': []})
+
 @app.route('/history')
 def history() -> Response:
     """Get processing history"""
@@ -499,7 +577,10 @@ if __name__ == '__main__':
     debug = app.config['DEBUG']
     
     logger.info("Starting web server...")
-    logger.info("Open your browser and go to: http://%s:%s", host, port)
+    base_url = f"http://{host}:{port}"
+    logger.info("Open your browser and go to:")
+    logger.info("  Single Job Processing: %s/", base_url)
+    logger.info("  Batch Processing:      %s/batch", base_url)
     logger.info("Debug mode: %s", 'enabled' if debug else 'disabled')
     logger.info("Press Ctrl+C to stop the server")
     

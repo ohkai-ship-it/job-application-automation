@@ -5,7 +5,10 @@ This document summarizes the public APIs: Python module contracts and Flask endp
 ## Flask endpoints
 
 - GET `/`  
-  Returns the HTML UI.
+  Returns the HTML UI for single job processing.
+
+- GET `/batch`  
+  Returns the HTML UI for batch job processing (multiple URLs).
 
 - POST `/process`  
   Starts a background job to process a Stepstone URL.
@@ -21,6 +24,9 @@ This document summarizes the public APIs: Python module contracts and Flask endp
 
 - GET `/errors`  
   Returns a list of recent error events (sanitized).
+
+- GET `/history`  
+  Returns processing history and statistics.
 
 ## Python modules
 

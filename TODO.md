@@ -48,3 +48,8 @@
 - Error Handling & Logging: centralized retries, structured logging, and error reporting with `/errors`
 - Documentation: README, API, CONTRIBUTING, DEVELOPMENT, and Helpers docs
 - Release v0.1.0: tagged and notes prepared
+- **Batch Interface**: Created `/batch` route with `templates/batch.html` for multi-URL batch processing
+  - Supports pause/resume functionality
+  - Real-time queue monitoring with status indicators
+  - Batch statistics (processed, success, errors)
+  - File downloads for completed jobs

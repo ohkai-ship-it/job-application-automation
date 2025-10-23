@@ -308,18 +308,18 @@ class TrelloConnect:
             except Exception as e:
                 self.logger.warning("Error setting text field %s: %s", field_id, e)
         
-        # List/dropdown field: Quelle (Source) - set to "Stepstone" or "LinkedIn" based on URL
+        # List/dropdown field: Quelle (Source) - set to appropriate source (Stepstone or LinkedIn)
         if self.field_source_list:
             source_url = job_data.get('source_url', '')
             source_option_id = None
-            source_name = None
+            source_name = 'Unknown'
             
             if 'stepstone' in source_url.lower() and self.field_source_stepstone_option:
                 source_option_id = self.field_source_stepstone_option
-                source_name = "Stepstone"
+                source_name = 'Stepstone'
             elif 'linkedin' in source_url.lower() and self.field_source_linkedin_option:
                 source_option_id = self.field_source_linkedin_option
-                source_name = "LinkedIn"
+                source_name = 'LinkedIn'
             
             if source_option_id:
                 try:
@@ -447,8 +447,11 @@ class TrelloConnect:
     def _add_attachments(self, card_id: str, job_data: Dict[str, Any]) -> None:
         """
         Add attachments to the card:
-        - Stepstone link as "Ausschreibung"
+        - Job posting link as "Ausschreibung" (Stepstone/LinkedIn/other)
         - Company career page as "Firmenportal" (if available)
+        
+        Note: Stepstone URLs can trigger Trello API timeouts due to long URLs and
+        slow metadata extraction. Using extended timeout (20s) to accommodate this.
         
         Args:
             card_id: The Trello card ID
@@ -456,7 +459,7 @@ class TrelloConnect:
         """
         attachments_to_add = []
         
-        # Add Stepstone link (source URL)
+        # Add job posting link (source URL)
         source_url = job_data.get('source_url', '')
         if source_url:
             attachments_to_add.append(('Ausschreibung', source_url))
@@ -474,12 +477,17 @@ class TrelloConnect:
                     'name': name,
                     'url': url_to_attach
                 }
+                
+                # Use extended timeout for Stepstone URLs (they trigger expensive
+                # metadata extraction on Trello's side, causing 10s default to timeout)
+                attachment_timeout = 20 if 'stepstone' in source_url.lower() else 10
+                
                 resp = self.requester(
                     'POST',
                     url,
                     params=self.auth_params,
                     json=payload,
-                    timeout=10
+                    timeout=attachment_timeout
                 )
                 
                 if getattr(resp, 'status_code', 200) in (200, 201):

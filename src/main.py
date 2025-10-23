@@ -8,8 +8,8 @@ import os
 from pathlib import Path
 sys.path.append(os.path.dirname(__file__))
 
-from scraper import scrape_stepstone_job, save_to_json
-from linkedin_scraper import scrape_linkedin_job
+from scraper import save_to_json, StepstoneScraper
+from linkedin_scraper import LinkedInScraper
 from trello_connect import TrelloConnect
 from cover_letter import CoverLetterGenerator
 from docx_generator import WordCoverLetterGenerator
@@ -20,6 +20,7 @@ from utils.error_reporting import report_error
 import json
 from datetime import datetime
 import time
+import asyncio
 
 # Validate environment at startup (allow skipping in tests)
 skip_env = os.getenv('SKIP_ENV_VALIDATION', '0') == '1'
@@ -45,30 +46,63 @@ from typing import Any, Dict, List, Optional
 
 def detect_job_source(url: str) -> str:
     """
-    Detect whether a URL is from LinkedIn or Stepstone
+    Detect job source from URL.
     
     Args:
-        url (str): Job posting URL
+        url: Job posting URL
         
     Returns:
-        str: Either 'linkedin' or 'stepstone'
+        'stepstone', 'linkedin', or 'unknown'
     """
     url_lower = url.lower()
-    
-    if 'linkedin.com' in url_lower:
+    if 'stepstone' in url_lower:
+        return 'stepstone'
+    elif 'linkedin' in url_lower:
         return 'linkedin'
-    elif 'stepstone' in url_lower:
-        return 'stepstone'
+    return 'unknown'
+
+
+async def scrape_job_posting_async(url: str) -> Optional[Dict[str, Any]]:
+    """
+    Scrape a job posting using the appropriate scraper based on URL.
+    
+    Args:
+        url: Job posting URL
+        
+    Returns:
+        Job data dictionary or None if scraping failed
+    """
+    source = detect_job_source(url)
+    logger = get_logger(__name__)
+    
+    if source == 'stepstone':
+        scraper = StepstoneScraper()
+        return await scraper.scrape(url)
+    elif source == 'linkedin':
+        scraper = LinkedInScraper()
+        return await scraper.scrape(url)
     else:
-        # Default to stepstone for unknown URLs
-        logger.warning("Unknown job source for URL: %s (defaulting to stepstone)", url)
-        return 'stepstone'
+        logger.error("Unknown job source for URL: %s", url)
+        return None
+
+
+def scrape_job_posting(url: str) -> Optional[Dict[str, Any]]:
+    """
+    Scrape a job posting (sync wrapper for backward compatibility).
+    
+    Args:
+        url: Job posting URL
+        
+    Returns:
+        Job data dictionary or None if scraping failed
+    """
+    return asyncio.run(scrape_job_posting_async(url))
+
 
 def process_job_posting(
     url: str,
     generate_cover_letter: bool = True,
     generate_pdf: bool = False,  # Disabled by default to save time for manual edits
-    create_trello_card: bool = True,  # Allow disabling Trello card creation from settings
     skip_duplicate_check: bool = False  # Allow skipping duplicate check for testing
 ) -> Dict[str, Any]:
     """
@@ -78,7 +112,6 @@ def process_job_posting(
         url (str): Stepstone job posting URL
         generate_cover_letter (bool): Whether to generate a cover letter
         generate_pdf (bool): Whether to convert to PDF (default: False, as manual edits are needed)
-        create_trello_card (bool): Whether to create a Trello card (default: True)
         skip_duplicate_check (bool): Skip duplicate detection (for testing/re-processing)
         
     Returns:
@@ -125,14 +158,8 @@ def process_job_posting(
     logger.info("STEP 1: Scraping job posting...")
     logger.info("%s", "-" * 80)
     
-    # Detect source and use appropriate scraper
-    source = detect_job_source(url)
-    logger.info("Detected source: %s", source.upper())
-    
-    if source == 'linkedin':
-        job_data = scrape_linkedin_job(url)
-    else:
-        job_data = scrape_stepstone_job(url)
+    # Use new job-source-aware scraping
+    job_data = scrape_job_posting(url)
     
     if not job_data:
         logger.error("Failed to scrape job posting!")
@@ -156,28 +183,22 @@ def process_job_posting(
     # filename = DATA_DIR / f"scraped_job_{timestamp}.json"
     # save_to_json(job_data, str(filename))
     
-    # Step 2: Create Trello card (if enabled)
-    card = None
-    if create_trello_card:
-        logger.info("%s", "=" * 80)
-        logger.info("STEP 2: Creating Trello card...")
-        logger.info("%s", "-" * 80)
-        
-        trello = TrelloConnect()
-        card = trello.create_card_from_job_data(job_data)
-        
-        if not card:
-            logger.error("Failed to create Trello card!")
-            return {
-                'status': 'partial',
-                'step': 'trello',
-                'job_data': job_data,
-                'error': 'Failed to create card'
-            }
-    else:
-        logger.info("%s", "=" * 80)
-        logger.info("STEP 2: Skipping Trello card creation (disabled in settings)")
-        logger.info("%s", "-" * 80)
+    # Step 2: Create Trello card
+    logger.info("%s", "=" * 80)
+    logger.info("STEP 2: Creating Trello card...")
+    logger.info("%s", "-" * 80)
+    
+    trello = TrelloConnect()
+    card = trello.create_card_from_job_data(job_data)
+    
+    if not card:
+        logger.error("Failed to create Trello card!")
+        return {
+            'status': 'partial',
+            'step': 'trello',
+            'job_data': job_data,
+            'error': 'Failed to create card'
+        }
     
     # Step 3: Generate cover letter (optional)
     cover_letter_text = None
@@ -407,10 +428,7 @@ def process_job_posting(
     logger.info("  Company: %s", job_data.get('company_name', 'N/A'))
     logger.info("  Position: %s", job_data.get('job_title', 'N/A'))
     logger.info("  Location: %s", job_data.get('location', 'N/A'))
-    if card:
-        logger.info("  Trello Card: %s", card['shortUrl'])
-    else:
-        logger.info("  Trello Card: (skipped)")
+    logger.info("  Trello Card: %s", card['shortUrl'])
     # logger.info("  Data saved: %s", filename)  # JSON file saving disabled
     if cover_letter_file:
         logger.info("  Cover Letter (TXT): %s", cover_letter_file)
@@ -500,14 +518,14 @@ def interactive_mode() -> None:
         choice = input("\nSelect option (1-3): ").strip()
         
         if choice == '1':
-            url = input("\nEnter job URL (Stepstone or LinkedIn): ").strip()
+            url = input("\nEnter Stepstone job URL: ").strip()
             if url:
                 process_job_posting(url)
             else:
                 logger.error("No URL provided!")
         
         elif choice == '2':
-            logger.info("Enter job URLs (Stepstone or LinkedIn, one per line, empty line to finish):")
+            logger.info("Enter Stepstone URLs (one per line, empty line to finish):")
             urls = []
             while True:
                 url = input().strip()
