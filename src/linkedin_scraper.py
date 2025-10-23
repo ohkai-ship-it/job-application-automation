@@ -307,21 +307,6 @@ class LinkedInScraper(BaseJobScraper):
         return None
 
 
-# Backward Compatibility
-def extract_job_id_from_url(url: str) -> str:
-    scraper = LinkedInScraper()
-    return scraper._extract_job_id(url)
-
-
-async def scrape_linkedin_job_async(url: str) -> Optional[JobData]:
-    scraper = LinkedInScraper()
-    return await scraper.scrape(url)
-
-
-def scrape_linkedin_job(url: str) -> Optional[JobData]:
-    return asyncio.run(scrape_linkedin_job_async(url))
-
-
 if __name__ == "__main__":
     async def main():
         test_url = "https://www.linkedin.com/jobs/collections/recommended/?currentJobId=4253399100"

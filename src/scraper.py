@@ -442,51 +442,6 @@ class StepstoneScraper(BaseJobScraper):
         return find_address_after_company(0, len(lines))
 
 
-# ===== Backward Compatibility Functions =====
-# These functions maintain the old API for existing code
-
-def clean_job_title(title: Optional[str]) -> Optional[str]:
-    """
-    (DEPRECATED) Remove gender markers from job titles
-    Use StepstoneScraper._clean_job_title() instead.
-    """
-    scraper = StepstoneScraper()
-    return scraper._clean_job_title(title)
-
-
-def split_address(address_dict: Address) -> Tuple[str, str]:
-    """
-    (DEPRECATED) Split address into two lines
-    Use StepstoneScraper._split_address() instead.
-    """
-    scraper = StepstoneScraper()
-    return scraper._split_address(address_dict)
-
-
-def extract_company_address_from_description(description: str, company_name: str) -> Optional[Dict[str, str]]:
-    """
-    (DEPRECATED) Extract company address from description
-    Use StepstoneScraper._extract_address_from_description() instead.
-    """
-    scraper = StepstoneScraper()
-    return scraper._extract_address_from_description(description, company_name)
-
-
-async def scrape_stepstone_job_async(url: str) -> Optional[JobData]:
-    """
-    Async version - new recommended API.
-    """
-    scraper = StepstoneScraper()
-    return await scraper.scrape(url)
-
-
-def scrape_stepstone_job(url: str) -> Optional[JobData]:
-    """
-    (LEGACY) Scrape Stepstone job - maintains backward compatibility.
-    For async applications, use scrape_stepstone_job_async() instead.
-    """
-    return asyncio.run(scrape_stepstone_job_async(url))
-
 
 def save_to_json(data: JobData, filename: Union[str, Path]) -> None:
     """Save scraped data to JSON file."""

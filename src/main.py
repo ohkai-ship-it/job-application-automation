@@ -8,8 +8,8 @@ import os
 from pathlib import Path
 sys.path.append(os.path.dirname(__file__))
 
-from scraper import scrape_stepstone_job, save_to_json, StepstoneScraper
-from linkedin_scraper import LinkedInScraper, scrape_linkedin_job
+from scraper import save_to_json, StepstoneScraper
+from linkedin_scraper import LinkedInScraper
 from trello_connect import TrelloConnect
 from cover_letter import CoverLetterGenerator
 from docx_generator import WordCoverLetterGenerator
