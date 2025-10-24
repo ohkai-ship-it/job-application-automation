@@ -6,8 +6,10 @@ Loads CVs, builds prompts, detects language/seniority, and saves cover letters.
 
 import os
 import re
+import time
+from functools import wraps
 from pathlib import Path
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, Callable, TypeVar
 try:
     from .utils.env import get_str
     from .utils.log_config import get_logger
@@ -19,13 +21,79 @@ except ImportError:
     from utils.log_config import get_logger
     from utils.errors import AIGenerationError
 try:
-    from openai import OpenAI
+    from openai import OpenAI, RateLimitError, AuthenticationError, APIError
 except ImportError:
     OpenAI = None
+    RateLimitError = Exception
+    AuthenticationError = Exception
+    APIError = Exception
 try:
     import pypdf
 except ImportError:
     pypdf = None
+
+# Type variable for retry decorator
+F = TypeVar('F', bound=Callable)
+
+def exponential_backoff_retry(max_attempts: int = 3, initial_delay: float = 1.0, backoff_factor: float = 2.0):
+    """
+    Decorator for exponential backoff retry logic for API calls.
+    
+    Args:
+        max_attempts: Maximum number of retry attempts (default: 3)
+        initial_delay: Initial delay in seconds (default: 1.0)
+        backoff_factor: Multiplier for delay between retries (default: 2.0)
+        
+    Returns:
+        Decorator function
+    """
+    def decorator(func: F) -> F:
+        @wraps(func)
+        def wrapper(self, *args, **kwargs):
+            logger = get_logger(__name__)
+            delay = initial_delay
+            last_exception = None
+            
+            for attempt in range(max_attempts):
+                try:
+                    return func(self, *args, **kwargs)
+                except RateLimitError as e:
+                    last_exception = e
+                    if attempt < max_attempts - 1:
+                        logger.warning(
+                            "Rate limit hit (attempt %d/%d). Waiting %.1f seconds before retry...",
+                            attempt + 1, max_attempts, delay
+                        )
+                        time.sleep(delay)
+                        delay *= backoff_factor
+                    else:
+                        logger.error("Rate limit exceeded after %d attempts", max_attempts)
+                except AuthenticationError as e:
+                    logger.error("Authentication failed: %s. Check OPENAI_API_KEY", e)
+                    raise AIGenerationError(f"OpenAI authentication failed: {e}") from e
+                except APIError as e:
+                    last_exception = e
+                    if attempt < max_attempts - 1:
+                        logger.warning(
+                            "OpenAI API error (attempt %d/%d): %s. Waiting %.1f seconds before retry...",
+                            attempt + 1, max_attempts, e, delay
+                        )
+                        time.sleep(delay)
+                        delay *= backoff_factor
+                    else:
+                        logger.error("OpenAI API error after %d attempts: %s", max_attempts, e)
+                except Exception as e:
+                    # For non-API exceptions, fail immediately without retry
+                    logger.error("Unexpected error (no retry): %s", e)
+                    raise AIGenerationError(f"Unexpected error: {e}") from e
+            
+            # All retries exhausted
+            if last_exception:
+                raise AIGenerationError(f"Failed after {max_attempts} attempts: {last_exception}") from last_exception
+            
+        return wrapper
+        
+    return decorator
 
 class CoverLetterGenerator:
     def __init__(self) -> None:
@@ -204,6 +272,7 @@ class CoverLetterGenerator:
             else:
                 return "Best regards,"  # Professional standard
 
+    @exponential_backoff_retry(max_attempts=3, initial_delay=1.0, backoff_factor=2.0)
     def generate_cover_letter(self, job_data: Dict[str, Any], target_language: Optional[str] = None, *, tone: Optional[str] = None, auto_trim: bool = False) -> str:
         job_description = job_data.get('job_description', '')
         if not target_language:
@@ -230,20 +299,17 @@ class CoverLetterGenerator:
         if not self.client:
             self.logger.error("OpenAI client not available")
             raise AIGenerationError("OpenAI client not available")
-        try:
-            response = self.client.chat.completions.create(
-                model=self.model,
-                messages=[
-                    {"role": "system", "content": self._get_system_prompt(target_language, seniority)},
-                    {"role": "user", "content": prompt}
-                ],
-                temperature=0.7,
-                max_tokens=600
-            )
-        except Exception as e:
-            # Catch and wrap OpenAI client exceptions
-            self.logger.error("OpenAI API error: %s", e)
-            raise AIGenerationError(f"OpenAI API error: {e}") from e
+        
+        # API call - retry logic handled by decorator
+        response = self.client.chat.completions.create(
+            model=self.model,
+            messages=[
+                {"role": "system", "content": self._get_system_prompt(target_language, seniority)},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.7,
+            max_tokens=600
+        )
 
         cover_letter_body = response.choices[0].message.content.strip()
 

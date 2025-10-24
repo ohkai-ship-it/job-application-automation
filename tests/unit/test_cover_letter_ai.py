@@ -110,7 +110,8 @@ def test_generate_cover_letter_handles_openai_exception(monkeypatch):
             'job_description': 'We do things',
             'company_name': 'Acme'
         }, target_language='english')
-    assert 'OpenAI API error' in str(exc.value)
+    # The error message comes from the exponential backoff decorator which wraps non-API exceptions
+    assert 'Unexpected error' in str(exc.value) or 'quota exceeded' in str(exc.value)
 
 
 def test_generate_cover_letter_word_count_enforced(monkeypatch):

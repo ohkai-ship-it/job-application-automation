@@ -798,6 +798,76 @@ def api_recent_files() -> Response:
         logger.exception("Error getting recent files: %s", e)
         return jsonify({'files': []})
 
+@app.route('/health')
+def health() -> Response:
+    """Health check endpoint for monitoring
+    
+    Returns:
+        - 200 OK if application is healthy
+        - 503 Service Unavailable if critical services are down
+    """
+    try:
+        health_status = {
+            'status': 'healthy',
+            'timestamp': datetime.utcnow().isoformat(),
+            'uptime': 'running',
+            'services': {
+                'database': 'unknown',
+                'trello': 'unknown',
+                'openai': 'unknown',
+            }
+        }
+        
+        # Check database connectivity
+        try:
+            db = get_db()
+            # Try a simple query to verify connection
+            db.execute('SELECT 1')
+            health_status['services']['database'] = 'ok'
+        except Exception as db_error:
+            logger.warning("Database health check failed: %s", db_error)
+            health_status['services']['database'] = 'error'
+        
+        # Check Trello credentials
+        try:
+            from credentials import get_credential
+            trello_key = get_credential('TRELLO_KEY', required=False)
+            trello_token = get_credential('TRELLO_TOKEN', required=False)
+            if trello_key and trello_token:
+                health_status['services']['trello'] = 'ok'
+            else:
+                health_status['services']['trello'] = 'not_configured'
+        except Exception as trello_error:
+            logger.warning("Trello health check failed: %s", trello_error)
+            health_status['services']['trello'] = 'error'
+        
+        # Check OpenAI credentials
+        try:
+            from credentials import get_credential
+            openai_key = get_credential('OPENAI_API_KEY', required=False)
+            if openai_key:
+                health_status['services']['openai'] = 'ok'
+            else:
+                health_status['services']['openai'] = 'not_configured'
+        except Exception as openai_error:
+            logger.warning("OpenAI health check failed: %s", openai_error)
+            health_status['services']['openai'] = 'error'
+        
+        # Overall status: consider healthy if at least database is ok
+        if health_status['services']['database'] != 'ok':
+            health_status['status'] = 'degraded'
+            return jsonify(health_status), 503
+        
+        return jsonify(health_status), 200
+        
+    except Exception as e:
+        logger.exception("Health check failed: %s", e)
+        return jsonify({
+            'status': 'unhealthy',
+            'error': str(e),
+            'timestamp': datetime.utcnow().isoformat()
+        }), 503
+
 if __name__ == '__main__':
     # Ensure required directories exist
     os.makedirs('templates', exist_ok=True)

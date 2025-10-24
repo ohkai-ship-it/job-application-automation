@@ -216,6 +216,7 @@ def process_job_posting(
     
     # Step 2: Create Trello card (optional)
     card = None
+    trello_error = None  # NEW: Track Trello creation errors
     if create_trello_card:
         logger.info("%s", "=" * 80)
         logger.info("STEP 2: Creating Trello card...")
@@ -224,17 +225,24 @@ def process_job_posting(
         if progress_callback:
             progress_callback(progress=20, message='Creating Trello Card')
         
-        trello = TrelloConnect()
-        card = trello.create_card_from_job_data(job_data)
-        
-        if not card:
-            logger.error("Failed to create Trello card!")
-            return {
-                'status': 'partial',
-                'step': 'trello',
-                'job_data': job_data,
-                'error': 'Failed to create card'
-            }
+        try:
+            trello = TrelloConnect()
+            card = trello.create_card_from_job_data(job_data)
+            
+            if not card:
+                logger.warning("⚠️  Failed to create Trello card (returned None)")
+                trello_error = "Card creation returned None"
+                # GRACEFUL DEGRADATION: Continue processing instead of failing
+        except Exception as e:
+            logger.error("🔴 Exception creating Trello card: %s", e)
+            report_error(
+                "Trello card creation failed",
+                exc=e,
+                context={"company_name": job_data.get('company_name'), "url": url},
+                severity="warning"
+            )
+            trello_error = str(e)
+            # GRACEFUL DEGRADATION: Continue processing instead of failing
     else:
         logger.info("Skipping Trello card creation (disabled)")
     
@@ -425,11 +433,22 @@ def process_job_posting(
                 if progress_callback:
                     progress_callback(progress=90, message='Saving PDF')
                 
-                pdf_filename = docx_filename.replace('.docx', '.pdf')
-                pdf_file = word_generator.convert_to_pdf(docx_file, pdf_filename)
-                
-                if not pdf_file:
-                    logger.warning("PDF conversion skipped - install with: pip install docx2pdf")
+                try:
+                    pdf_filename = docx_filename.replace('.docx', '.pdf')
+                    pdf_file = word_generator.convert_to_pdf(docx_file, pdf_filename)
+                    
+                    if not pdf_file:
+                        logger.warning("⚠️  PDF conversion skipped - install with: pip install docx2pdf")
+                except Exception as pdf_error:
+                    logger.error("🔴 PDF conversion failed: %s", pdf_error)
+                    report_error(
+                        "PDF conversion failed",
+                        exc=pdf_error,
+                        context={"docx_file": docx_file},
+                        severity="warning"
+                    )
+                    # GRACEFUL DEGRADATION: Continue without PDF instead of failing
+                    logger.info("Continuing without PDF file (DOCX already created)")
             
         except Exception as e:
             logger.warning("Cover letter generation failed: %s", e)
@@ -492,39 +511,42 @@ def process_job_posting(
             logger.warning("Failed to save to database: %s", e)
             # Non-critical error, continue anyway
     
-    # Success!
+    # Success or partial success!
     logger.info("%s", "=" * 80)
     logger.info("AUTOMATION COMPLETE!")
     logger.info("%s", "=" * 80)
 
+    # Determine overall status
+    has_errors = bool(trello_error or cover_letter_error)
+    overall_status = 'success' if not has_errors else 'partial_success'
+    
     logger.info("Summary:")
     logger.info("  Company: %s", job_data.get('company_name', 'N/A'))
     logger.info("  Position: %s", job_data.get('job_title', 'N/A'))
     logger.info("  Location: %s", job_data.get('location', 'N/A'))
+    
     if card:
-        logger.info("  Trello Card: %s", card['shortUrl'])
+        logger.info("  ✅ Trello Card: %s", card['shortUrl'])
+    elif trello_error:
+        logger.info("  ⚠️  Trello Card: FAILED - %s", trello_error)
+    
     # logger.info("  Data saved: %s", filename)  # JSON file saving disabled
     if cover_letter_file:
-        logger.info("  Cover Letter (TXT): %s", cover_letter_file)
+        logger.info("  ✅ Cover Letter (TXT): %s", cover_letter_file)
     if docx_file:
-        logger.info("  Cover Letter (DOCX): %s", docx_file)
-    if pdf_file:
-        logger.info("  Cover Letter (PDF): %s", pdf_file)
+        logger.info("  ✅ Cover Letter (DOCX): %s", docx_file)
+    elif cover_letter_error and generate_cover_letter:
+        logger.info("  ⚠️  Cover Letter (DOCX): FAILED - %s", cover_letter_error)
     
-    # NEW: If cover letter failed, return special status
-    if cover_letter_error and generate_cover_letter:
-        return {
-            'status': 'cover_letter_failed',
-            'job_data': job_data,
-            'trello_card': card,
-            'cover_letter_error': cover_letter_error,
-            'is_duplicate': is_duplicate
-        }
+    if pdf_file:
+        logger.info("  ✅ Cover Letter (PDF): %s", pdf_file)
     
     return {
-        'status': 'success',
+        'status': overall_status,
         'job_data': job_data,
         'trello_card': card,
+        'trello_error': trello_error,
+        'cover_letter_error': cover_letter_error,
         # 'data_file': filename,  # JSON file saving disabled
         'cover_letter_text_file': cover_letter_file,
         'cover_letter_docx_file': docx_file,
