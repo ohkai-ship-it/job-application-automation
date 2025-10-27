@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 import os
 import traceback
-from datetime import datetime, UTC
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Optional
 
@@ -82,7 +82,7 @@ def report_error(
     errors_dir = _output_dir()
     _ensure_dir(errors_dir)
 
-    ts = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
+    ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     event_id = f"evt_{ts}"
     stack = None
     exc_type = None
