@@ -1,9 +1,9 @@
 """Diagnostics CLI for helper tasks.
 
 Usage examples:
-  python -m src.helper.cli inspect-html --file data/debug_page.html
-  python -m src.helper.cli trello-auth
-  python -m src.helper.cli trello-inspect
+  python -m src.utils.cli inspect-html --file data/debug_page.html
+  python -m src.utils.cli trello-auth
+  python -m src.utils.cli trello-inspect
 """
 
 from __future__ import annotations
