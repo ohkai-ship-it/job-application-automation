@@ -4,7 +4,7 @@ from unittest import mock
 
 import pytest
 
-from src.helper import cli
+from src.utils import cli
 
 
 def run_cli(argv):
