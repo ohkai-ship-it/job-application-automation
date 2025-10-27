@@ -29,6 +29,10 @@ scripts/
 *.html
 !docs/**/*.html
 
+# Session summaries and explanatory files (kept locally, not tracked)
+RELEASE_NOTES.md
+DEPLOYMENT_GUIDE.md
+
 # Utility modules for future/experimental use (not in core runtime)
 src/utils/figma_client.py
 src/utils/page_analyzer.py
