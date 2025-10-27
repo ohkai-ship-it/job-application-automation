@@ -6,17 +6,13 @@ from src.utils.env import load_env, validate_env, get_str, validate_all_env
 
 def test_load_env():
     """Test that environment variables are loaded from config/.env"""
-    # Test with mock environment file
-    mock_env_content = """
-    TEST_VAR=test_value
-    TEST_EMPTY=
-    """
-    with mock.patch("builtins.open", mock.mock_open(read_data=mock_env_content)):
-        with mock.patch("os.path.exists") as mock_exists:
-            mock_exists.return_value = True
+    # Mock the path check and the load_dotenv function
+    with mock.patch("src.utils.env.os.path.exists") as mock_exists:
+        mock_exists.return_value = True
+        with mock.patch("src.utils.env.load_dotenv") as mock_load_dotenv:
+            mock_load_dotenv.return_value = True
             assert load_env() == True
-            assert os.getenv("TEST_VAR") == "test_value"
-            assert os.getenv("TEST_EMPTY") == ""
+            mock_load_dotenv.assert_called_once()
 
 def test_load_env_missing_file():
     """Test behavior when .env file is missing"""

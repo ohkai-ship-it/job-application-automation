@@ -29,36 +29,30 @@ class DummyClient:
                 return DummyResponse(" ".join(words))
 
 
-@pytest.fixture(autouse=True)
-def env(monkeypatch, tmp_path):
-    # Provide required env and dummy CV files
+class FakePage:
+    def extract_text(self):
+        return "Experience in data science and machine learning with Python."
+
+class FakeReader:
+    def __init__(self, file):
+        self.pages = [FakePage(), FakePage()]
+
+
+def test_generate_cover_letter_happy_path(monkeypatch):
+    # Setup environment and mocking BEFORE creating the generator
     monkeypatch.setenv("OPENAI_API_KEY", "testkey")
     monkeypatch.setenv("OPENAI_MODEL", "dummy-model")
 
-    # Create dummy CVs with some text content
-    data_dir = tmp_path / "data"
-    data_dir.mkdir(parents=True, exist_ok=True)
-
-    # Monkeypatch os.path.exists to return True for our dummy files
-    # and pypdf reading to simulate content
+    # Monkeypatch os.path.exists to return True for CV files
     def fake_exists(path):
         return str(path).endswith("cv_de.pdf") or str(path).endswith("cv_en.pdf")
 
     monkeypatch.setattr(cl.os.path, "exists", fake_exists)
 
-    class FakePage:
-        def extract_text(self):
-            return "Experience in data science."
+    # Patch pypdf before generator init
+    monkeypatch.setattr(cl, "pypdf", type("P", (), {"PdfReader": FakeReader}))
 
-    class FakeReader:
-        def __init__(self, file):
-            self.pages = [FakePage(), FakePage()]
-
-    # Patch pypdf
-    cl.pypdf = type("P", (), {"PdfReader": FakeReader})
-
-
-def test_generate_cover_letter_happy_path(monkeypatch):
+    # Now create generator - it will use the mocked pypdf and os.path.exists
     gen = cl.CoverLetterGenerator()
     # Inject dummy client
     gen.client = DummyClient()

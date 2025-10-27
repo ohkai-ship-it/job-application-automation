@@ -185,8 +185,10 @@ def test_create_card_with_labels_and_custom_fields(sample_job_data, monkeypatch,
     monkeypatch.setenv("TRELLO_LABEL_HYBRID", "lbl_hybrid")
     monkeypatch.setenv("TRELLO_LABEL_DE", "lbl_de")
     monkeypatch.setenv("TRELLO_LABEL_SENIOR", "lbl_senior")
-    monkeypatch.setenv("TRELLO_FIELD_COMPANY", "field_company")
-    monkeypatch.setenv("TRELLO_FIELD_JOB_TITLE", "field_title")
+    # Set the actual field env vars the code expects
+    monkeypatch.setenv("TRELLO_FIELD_FIRMENNAME", "field_company")
+    monkeypatch.setenv("TRELLO_FIELD_ROLLENTITEL", "field_title")
+    monkeypatch.setenv("TRELLO_FIELD_FIRMA_PERSON", "field_firma_person")
     
     tc = TrelloConnect(requester=fake_requester)
     result = tc.create_card_from_job_data(sample_job_data)
