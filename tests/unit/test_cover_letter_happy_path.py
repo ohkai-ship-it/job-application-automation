@@ -1,5 +1,7 @@
 import re
 from pathlib import Path
+from unittest import mock
+from io import BytesIO
 
 import pytest
 
@@ -39,20 +41,29 @@ class FakeReader:
 
 
 def test_generate_cover_letter_happy_path(monkeypatch):
-    # Setup environment and mocking BEFORE creating the generator
+    # Setup environment BEFORE creating the generator
     monkeypatch.setenv("OPENAI_API_KEY", "testkey")
     monkeypatch.setenv("OPENAI_MODEL", "dummy-model")
 
-    # Monkeypatch os.path.exists to return True for CV files
+    # Mock os.path.exists to return True for CV files
     def fake_exists(path):
         return str(path).endswith("cv_de.pdf") or str(path).endswith("cv_en.pdf")
-
     monkeypatch.setattr(cl.os.path, "exists", fake_exists)
+
+    # Mock open() to return a fake file object for CV files
+    original_open = open
+    def fake_open(filepath, *args, **kwargs):
+        if str(filepath).endswith(('.pdf', 'cv_de.pdf', 'cv_en.pdf')):
+            # Return a BytesIO object that looks like a PDF file
+            return BytesIO(b'%PDF-1.4 fake pdf content')
+        return original_open(filepath, *args, **kwargs)
+    
+    monkeypatch.setattr("builtins.open", fake_open)
 
     # Patch pypdf before generator init
     monkeypatch.setattr(cl, "pypdf", type("P", (), {"PdfReader": FakeReader}))
 
-    # Now create generator - it will use the mocked pypdf and os.path.exists
+    # Now create generator - it will use the mocked pypdf, os.path.exists, and open
     gen = cl.CoverLetterGenerator()
     # Inject dummy client
     gen.client = DummyClient()
