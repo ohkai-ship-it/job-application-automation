@@ -4,6 +4,34 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.2.1] - 2025-10-27
+
+### Fixed
+- **Python 3.10 Compatibility**: 
+  - Replaced `datetime.UTC` (Python 3.11+) with `timezone.utc` for universal compatibility
+  - Fixed in `src/utils/error_reporting.py`
+- **Python 3.12 Deprecation Warnings**:
+  - Replaced deprecated `datetime.utcnow()` with `datetime.now(timezone.utc)`
+  - Fixed in `src/app.py` (health check endpoints) and `src/logging_config.py`
+- **CI Test Suite**:
+  - Fixed `test_cover_letter_happy_path` with comprehensive file I/O mocking
+  - Fixed `test_load_env` with correct module namespace mocking
+  - Fixed `test_create_card_with_labels_and_custom_fields` by using correct Trello env var names
+  - All 109 tests now passing on Python 3.10 CI runner
+- **CI/CD Workflow**:
+  - Made Codecov upload non-blocking to prevent CI failures due to external rate limits
+  - Set `fail_ci_if_error: false` and added `continue-on-error: true`
+
+### Changed
+- **Code Quality**: 
+  - Removed 7 incomplete test files (.skip variants) - ~655 lines
+  - Removed 2 unused utility modules (figma_client.py, page_analyzer.py) - ~700 lines
+  - Consolidated CLI from src/helper → src/utils
+- **Documentation**:
+  - Enhanced BACKLOG.md with comprehensive roadmap and effort estimates
+  - Improved CONTRIBUTING.md with detailed development guidelines (200 lines)
+  - Simplified CHANGELOG.md for clarity and v0.2.0 focus
+
 ## [0.3.0] - 2025-10-16
 
 Milestone: Database integration for duplicate detection and AI cost tracking.
