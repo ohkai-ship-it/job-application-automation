@@ -1,58 +1,103 @@
 # Changelog
 
-All notable changes to this project will be documented in this file.
+All notable changes to this project will be documented in this file. Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-## [0.3.0] - 2025-10-16
+Planned features and improvements. See [BACKLOG.md](BACKLOG.md) for details.
 
-Milestone: Database integration for duplicate detection and AI cost tracking.
+- [ ] XING and Indeed job board integration
+- [ ] Batch scrape CLI subcommand
+- [ ] Browser extension for URL capture
+- [ ] Advanced job analytics and reporting
+- [ ] Parallel processing for multiple URLs
+
+## [0.2.0] - 2025-10-27
+
+**Milestone: Production-ready self-hosted tool with cleanup and optimization**
 
 ### Added
-- **SQLite Database Layer** (`src/database.py`):
-  - Lightweight 2-table schema for duplicate detection and AI metadata tracking
-  - `processed_jobs` table: SHA256-based URL deduplication with Trello card links
-  - `generation_metadata` table: AI model, cost, word count, and generated text tracking
-  - Singleton pattern with context managers for safe connections
-  - 6 indexed queries for performance (duplicate check, recent jobs, search, stats, cost tracking)
-  - Comprehensive unit tests (6/6 passing)
-  - Philosophy: Support tool for duplicates, NOT application management (Trello remains source of truth)
-- **Database Integration**:
-  - Step 0 in `main.py`: Duplicate detection before scraping (warns but continues in testing mode)
-  - Database saving after successful processing (job data + AI metadata + Trello links)
-  - Non-blocking integration: database failures don't stop workflow
-  - Flask app ready for background job integration (`from database import get_db`)
-- **Initialization & Testing**:
-  - `src/helper/init_database.py`: One-command database setup
-  - `src/helper/test_database_integration.py`: End-to-end integration tests
-  - Production database created at `data/applications.db`
-- **Documentation**:
-  - `docs/DATABASE_SCHEMA.md`: Complete schema design with examples and queries
-  - `docs/INTEGRATION_STRATEGY.md`: Comprehensive integration roadmap (10 integration options)
-  - `docs/PRODUCT_ROADMAP.md`: Phased implementation plan (Q1-Q4 2025), portfolio showcase strategy
-  - `docs/FIGMA_AI_PROMPT.md`: Dashboard design specifications for future UI implementation
+- **CLI Consolidation**: Moved diagnostics CLI from `src/helper/cli.py` to `src/utils/cli.py` for cleaner package structure
+- **Portfolio Integration**: Added `{{SENDER_PORTFOLIO}}` placeholder for cover letter templates (default: ohkai-ship-it.github.io)
+- **Repository Cleanup**: Removed 170+ development/debug files to streamline public repository
+- **Enhanced Documentation**: Improved README.md, added comprehensive BACKLOG.md and updated CONTRIBUTING.md
 
 ### Changed
-- **Cover Letter Validation** (Testing Mode):
-  - Relaxed word count validation from 180-240 to 170-250 words (testing only)
-  - AI prompt still requests strict 180-240 range
-  - Logs info message when word count is acceptable but not ideal
-  - TODO added for production tightening
-- **Dependency Updates**:
-  - Added `pypdf` to requirements.txt (CV PDF reading)
-  - Installed `pypdf` in virtual environment
+- **Module Reorganization**: All utilities now consolidated under `src/utils/` (removed empty `src/helper/` directory)
+- **Setup Entry Point**: Updated `setup.py` to reference `src.utils.cli:main` for diagnostics command
 
 ### Fixed
-- CV file loading: `pypdf` package was missing from environment
-- Database save on duplicates: Now checks duplicate status before saving to avoid UNIQUE constraint errors
-- Cover letter generation: Path resolution for CV files works correctly
+- README formatting issues (removed duplicate content)
+- Repository size reduced by ~1,337 lines of development artifacts
+- Clearer documentation structure for new users
 
-### Developer Notes
-- **Testing Mode Active** (⚠️ **Before Production**):
-  - Duplicate detection warns but continues (uncomment `return` in `main.py` Step 0 to stop on duplicates)
-  - Cover letter validation accepts 170-250 words (change back to 180-240 in `cover_letter.py`)
-- **Database Philosophy**: Tracks what was processed, NOT application status (Trello owns that)
-- **Next Steps**: Multi-AI providers, improved UI, LinkedIn integration
+---
+
+## [0.1.0] - 2025-10-12
+
+**Milestone: Core workflow stabilized with Trello integration and AI cover letters**
+
+### Added
+- **Job Scraping**:
+  - Stepstone scraper with JSON-LD extraction and DOM fallback
+  - LinkedIn Collections scraper with Playwright for JS rendering
+  - Normalized `job_data` schema for consistent processing
+  
+- **Trello Integration**:
+  - Automatic card creation with intelligent fields
+  - Language, seniority, and work mode detection
+  - Custom field mapping and label management
+  - Duplicate prevention checks
+  
+- **AI Cover Letter Generation**:
+  - Context-aware bilingual generation (German/English)
+  - Formality detection and tone matching
+  - Strict 180–240 word count enforcement
+  - Context-aware salutations and valedictions (du/Sie detection)
+  
+- **Export Formats**:
+  - DOCX generation with professional templates
+  - PDF export with styling
+  - TXT plain text fallback
+  
+- **Web UI (Flask)**:
+  - Background job processing with `/process` endpoint
+  - Status tracking and download capabilities
+  - Global error handling and reporting
+  
+- **Diagnostics CLI**:
+  - `trello-auth` – Verify Trello credentials
+  - `trello-inspect` – View board configuration
+  - `inspect-html` – Debug HTML structure and JSON-LD
+  
+- **Comprehensive Documentation**:
+  - SETUP_GUIDE.md for new users
+  - CONTRIBUTING.md for developers
+  - docs/DEVELOPMENT.md, docs/TRELLO_CARD_LAYOUT.md, docs/API.md
+  - Error reporting with sanitized JSON events
+
+### Changed
+- Trello integration refactored into modular `src/trello_connect.py`
+- Cover letter generation unified with language/seniority detection
+- Global Flask error handling improved
+- Scraper hardened with better error recovery
+
+### Fixed
+- PDF style name bug in `pdf_generator.py`
+- Retry helper incorrectly retrying on non-retryable HTTPError
+- PowerShell path quoting in VS Code tasks
+- Error event sorting (timezone-aware UTC)
+
+---
+
+## Release Notes
+
+**Current Version**: v0.2.0 (Production)  
+**Status**: Ready for self-hosted deployment  
+**Platforms**: Windows, macOS, Linux  
+**Python**: 3.8+  
+
+For detailed setup instructions, see [SETUP_GUIDE.md](SETUP_GUIDE.md).
 
 ## [0.2.0] - 2025-10-13
 
