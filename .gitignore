@@ -80,5 +80,9 @@ docs/*.md
 .coverage
 htmlcov/
 
+# Test files
+tests/**/*.skip
+tests/**/*.bkup
+
 # Logs
 *.log
