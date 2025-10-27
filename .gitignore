@@ -26,6 +26,7 @@ build/
 # Project-specific
 output/cover_letters/
 output/errors/
+output/errors/*.json
 data/scraped_job_*.json
 data/cv_*.pdf
 data/letter*.pdf
@@ -33,6 +34,9 @@ data/*.db
 data/jobscollection.txt
 data/template_*_backup.docx
 data/template_*_personal.docx
+
+# Info folder (outdated documentation)
+info/
 
 # Pytest
 .pytest_cache/
