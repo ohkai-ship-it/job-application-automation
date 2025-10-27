@@ -31,6 +31,8 @@ data/cv_*.pdf
 data/letter*.pdf
 data/*.db
 data/jobscollection.txt
+data/template_*_backup.docx
+data/template_*_personal.docx
 
 # Pytest
 .pytest_cache/

@@ -25,8 +25,9 @@ class WordCoverLetterGenerator:
     """
     
     def __init__(self, template_path_de: str = 'data/template_de.docx', template_path_en: str = 'data/template_en.docx') -> None:
-        self.template_de = template_path_de
-        self.template_en = template_path_en
+        # Support personal templates (with signature) if they exist, otherwise use public templates
+        self.template_de = self._resolve_template_path(template_path_de, 'data/template_de_personal.docx')
+        self.template_en = self._resolve_template_path(template_path_en, 'data/template_en_personal.docx')
         
         # Your personal details
         self.sender = {
@@ -38,6 +39,18 @@ class WordCoverLetterGenerator:
             'linkedin': 'www.linkedin.com/in/worldapprentice',
             'portfolio': 'ohkai-ship-it.github.io'
         }
+    
+    def _resolve_template_path(self, default_path: str, personal_path: str) -> str:
+        """
+        Resolve template path: prefer personal version if it exists,
+        otherwise use default public version.
+        
+        This allows developers to maintain personal templates with signatures
+        locally while sharing clean public templates on GitHub.
+        """
+        if os.path.exists(personal_path):
+            return personal_path
+        return default_path
     
     def generate_from_template(
         self,
@@ -90,6 +103,7 @@ class WordCoverLetterGenerator:
             '{{SENDER_ADDRESS_LINE2}}': self.sender['address_line2'],
             '{{SENDER_LINKEDIN}}': self.sender['linkedin'],
             '{{SENDER_PORTFOLIO}}': self.sender['portfolio'],
+            '{{SENDER_SIGNATURE}}': '',  # Empty for public templates, personal version has actual signature
             '{{COMPANY_NAME}}': job_data.get('company_name', 'Company'),
             '{{COMPANY_ADDRESS}}': job_data.get('company_address', ''),
             '{{COMPANY_ADDRESS_LINE1}}': job_data.get('company_address_line1', ''),
