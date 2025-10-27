@@ -23,6 +23,21 @@ build/
 .vscode/
 *.code-workspace
 
+# Development/debug scripts (kept locally, not in repo)
+check_*.py
+debug_*.py
+test_*.py
+inspect_*.py
+delete_*.py
+compare_*.py
+find_*.py
+get_*.py
+investigate_*.py
+quick_*.py
+save_*.py
+update_*.py
+generate_trello_config.py
+
 # Project-specific
 output/cover_letters/
 output/errors/
