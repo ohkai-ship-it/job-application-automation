@@ -17,7 +17,7 @@ from utils.log_config import get_logger
 from utils.error_reporting import report_error
 import threading
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 import time
 
 # Validate environment at startup (allow skipping in tests)
@@ -809,7 +809,7 @@ def health() -> Response:
     try:
         health_status = {
             'status': 'healthy',
-            'timestamp': datetime.utcnow().isoformat(),
+            'timestamp': datetime.now(timezone.utc).isoformat(),
             'uptime': 'running',
             'services': {
                 'database': 'unknown',
@@ -865,7 +865,7 @@ def health() -> Response:
         return jsonify({
             'status': 'unhealthy',
             'error': str(e),
-            'timestamp': datetime.utcnow().isoformat()
+            'timestamp': datetime.now(timezone.utc).isoformat()
         }), 503
 
 if __name__ == '__main__':
