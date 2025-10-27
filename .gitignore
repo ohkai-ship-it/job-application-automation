@@ -29,8 +29,7 @@ scripts/
 *.html
 !docs/**/*.html
 
-# Session summaries and explanatory files (kept locally, not tracked)
-RELEASE_NOTES.md
+# Session deployment guide (kept locally, not tracked)
 DEPLOYMENT_GUIDE.md
 
 # Utility modules for future/experimental use (not in core runtime)
