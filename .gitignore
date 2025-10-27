@@ -38,6 +38,21 @@ data/template_*_personal.docx
 # Info folder (outdated documentation)
 info/
 
+# Development notes and session documentation
+# Keep only essential docs in root and docs/ for users
+*.md
+!README.md
+!SETUP_GUIDE.md
+!CONTRIBUTING.md
+!BACKLOG.md
+!CHANGELOG.md
+docs/*.md
+!docs/SCRAPER_ARCHITECTURE.md
+!docs/TRELLO_CARD_LAYOUT.md
+!docs/DEVELOPMENT.md
+!docs/RELEASE_NOTES_v0.1.md
+!docs/API.md
+
 # Pytest
 .pytest_cache/
 .coverage
