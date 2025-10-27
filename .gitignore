@@ -37,6 +37,9 @@ quick_*.py
 save_*.py
 update_*.py
 generate_trello_config.py
+test_app_with_placeholder.*
+*.html
+!docs/**/*.html
 
 # Project-specific
 output/cover_letters/
