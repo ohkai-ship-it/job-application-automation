@@ -61,19 +61,16 @@ data/template_*_personal.docx
 info/
 
 # Development notes and session documentation
-# Keep only essential docs in root and docs/ for users
+# Keep only essential docs in root for users
+# docs/ folder is for development/reference - not synced to GitHub
 *.md
 !README.md
 !SETUP_GUIDE.md
 !CONTRIBUTING.md
 !BACKLOG.md
 !CHANGELOG.md
-docs/*.md
-!docs/SCRAPER_ARCHITECTURE.md
-!docs/TRELLO_CARD_LAYOUT.md
-!docs/DEVELOPMENT.md
-!docs/RELEASE_NOTES_v0.1.md
-!docs/API.md
+!API.md
+docs/
 
 # Pytest
 .pytest_cache/
