@@ -41,6 +41,10 @@ test_app_with_placeholder.*
 *.html
 !docs/**/*.html
 
+# Utility modules for future/experimental use (not in core runtime)
+src/utils/figma_client.py
+src/utils/page_analyzer.py
+
 # Project-specific
 output/cover_letters/
 output/errors/
