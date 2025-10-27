@@ -24,8 +24,12 @@ build/
 
 # Project-specific
 output/cover_letters/
+output/errors/
 data/scraped_job_*.json
 data/cv_*.pdf
+data/letter*.pdf
+data/*.db
+data/jobscollection.txt
 
 # Pytest
 .pytest_cache/
