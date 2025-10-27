@@ -35,7 +35,8 @@ class WordCoverLetterGenerator:
             'email': 'kai.voges@gmx.net',
             'address_line1': 'Cranachstraße 4',
             'address_line2': '40235 Düsseldorf',
-            'linkedin': 'www.linkedin.com/in/worldapprentice'
+            'linkedin': 'www.linkedin.com/in/worldapprentice',
+            'portfolio': 'ohkai-ship-it.github.io'
         }
     
     def generate_from_template(
@@ -88,6 +89,7 @@ class WordCoverLetterGenerator:
             '{{SENDER_ADDRESS_LINE1}}': self.sender['address_line1'],
             '{{SENDER_ADDRESS_LINE2}}': self.sender['address_line2'],
             '{{SENDER_LINKEDIN}}': self.sender['linkedin'],
+            '{{SENDER_PORTFOLIO}}': self.sender['portfolio'],
             '{{COMPANY_NAME}}': job_data.get('company_name', 'Company'),
             '{{COMPANY_ADDRESS}}': job_data.get('company_address', ''),
             '{{COMPANY_ADDRESS_LINE1}}': job_data.get('company_address_line1', ''),
