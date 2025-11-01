@@ -73,6 +73,7 @@ class BaseJobScraper(ABC):
             'job_title_clean': None,
             'location': None,
             'work_mode': None,
+            'industry': None,
             'website_link': None,
             'career_page_link': None,
             'direct_apply_link': None,
@@ -230,6 +231,11 @@ class StepstoneScraper(BaseJobScraper):
                 job_data['publication_date'] = json_ld_data['datePosted']
                 self.logger.debug("Publication Date: %s", job_data['publication_date'])
             
+            # 5b. Industry (from JSON-LD)
+            if json_ld_data and 'industry' in json_ld_data:
+                job_data['industry'] = json_ld_data['industry']
+                self.logger.debug("Industry: %s", job_data['industry'])
+            
             # 6. Job Description
             if json_ld_data and 'description' in json_ld_data:
                 desc_html = json_ld_data['description']
@@ -269,39 +275,52 @@ class StepstoneScraper(BaseJobScraper):
                     self.logger.debug("Company Reference (from JSON-LD): %s", job_data['company_job_reference'])
             
             # 7. Company Address
-            if job_data.get('job_description') and job_data.get('company_name'):
-                extracted_address = self._extract_address_from_description(
-                    job_data['job_description'], 
-                    job_data['company_name']
-                )
-                if extracted_address:
-                    job_data['company_address_line1'] = extracted_address['line1']
-                    job_data['company_address_line2'] = extracted_address['line2']
-                    job_data['company_address'] = f"{extracted_address['line1']}, {extracted_address['line2']}"
-                    self.logger.debug("Company Address (from job description): %s", job_data['company_address'])
+            # Priority: JSON-LD > Description Text
             
-            # Fallback: use jobLocation if no address found in description
+            # Phase 1: Try JSON-LD structured data (PRIMARY - most reliable)
+            if json_ld_data and 'jobLocation' in json_ld_data:
+                location_data = json_ld_data['jobLocation']
+                if isinstance(location_data, dict) and 'address' in location_data:
+                    address = location_data['address']
+                    address_parts = []
+                    if 'streetAddress' in address:
+                        address_parts.append(address['streetAddress'])
+                    if 'postalCode' in address:
+                        address_parts.append(address['postalCode'])
+                    if 'addressLocality' in address:
+                        address_parts.append(address['addressLocality'])
+                    if 'addressCountry' in address:
+                        address_parts.append(address['addressCountry'])
+                    
+                    if address_parts:
+                        job_data['company_address'] = ', '.join(address_parts)
+                        lines = self._split_address(address)
+                        job_data['company_address_line1'] = lines[0]
+                        job_data['company_address_line2'] = lines[1]
+                        self.logger.info("Company Address (from JSON-LD jobLocation):")
+                        self.logger.info("  streetAddress: %s", address.get('streetAddress', '(empty)'))
+                        self.logger.info("  postalCode: %s", address.get('postalCode', '(empty)'))
+                        self.logger.info("  addressLocality: %s", address.get('addressLocality', '(empty)'))
+                        self.logger.info("  addressCountry: %s", address.get('addressCountry', '(empty)'))
+                        self.logger.info("  Address Line 1: %s", job_data['company_address_line1'])
+                        self.logger.info("  Address Line 2: %s", job_data['company_address_line2'])
+                        self.logger.debug("  Full Address: %s", job_data['company_address'])
+            
+            # Phase 2: Fallback to extracting from job description text
             if not job_data.get('company_address'):
-                if json_ld_data and 'jobLocation' in json_ld_data:
-                    location_data = json_ld_data['jobLocation']
-                    if isinstance(location_data, dict) and 'address' in location_data:
-                        address = location_data['address']
-                        address_parts = []
-                        if 'streetAddress' in address:
-                            address_parts.append(address['streetAddress'])
-                        if 'postalCode' in address:
-                            address_parts.append(address['postalCode'])
-                        if 'addressLocality' in address:
-                            address_parts.append(address['addressLocality'])
-                        if 'addressCountry' in address:
-                            address_parts.append(address['addressCountry'])
-                        
-                        if address_parts:
-                            job_data['company_address'] = ', '.join(address_parts)
-                            lines = self._split_address(address)
-                            job_data['company_address_line1'] = lines[0]
-                            job_data['company_address_line2'] = lines[1]
-                            self.logger.debug("Company Address (from jobLocation): %s", job_data['company_address'])
+                if job_data.get('job_description') and job_data.get('company_name'):
+                    extracted_address = self._extract_address_from_description(
+                        job_data['job_description'], 
+                        job_data['company_name']
+                    )
+                    if extracted_address:
+                        job_data['company_address_line1'] = extracted_address['line1']
+                        job_data['company_address_line2'] = extracted_address['line2']
+                        job_data['company_address'] = f"{extracted_address['line1']}, {extracted_address['line2']}"
+                        self.logger.info("Company Address (from job description text):")
+                        self.logger.info("  Address Line 1: %s", job_data['company_address_line1'])
+                        self.logger.info("  Address Line 2: %s", job_data['company_address_line2'])
+                        self.logger.debug("  Full Address: %s", job_data['company_address'])
             
             # 8. Website Link
             real_company_website = None

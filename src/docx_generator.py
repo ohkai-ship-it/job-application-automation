@@ -106,8 +106,8 @@ class WordCoverLetterGenerator:
             '{{SENDER_SIGNATURE}}': '',  # Empty for public templates, personal version has actual signature
             '{{COMPANY_NAME}}': job_data.get('company_name', 'Company'),
             '{{COMPANY_ADDRESS}}': job_data.get('company_address', ''),
-            '{{COMPANY_ADDRESS_LINE1}}': job_data.get('company_address_line1', ''),
-            '{{COMPANY_ADDRESS_LINE2}}': job_data.get('company_address_line2', ''),
+            '{{COMPANY_ADDRESS_LINE1}}': job_data.get('company_address_line1') or '',
+            '{{COMPANY_ADDRESS_LINE2}}': job_data.get('company_address_line2') or '',
             '{{COMPANY_LOCATION}}': job_data.get('location', ''),
             '{{JOB_TITLE}}': job_data.get('job_title_clean') or job_data.get('job_title', 'Position'),
             '{{DATE}}': today,
@@ -115,6 +115,22 @@ class WordCoverLetterGenerator:
             '{{COVER_LETTER_BODY}}': cover_letter_formatted,
             '{{COVER_LETTER_VALEDICTION}}': job_data.get('cover_letter_valediction', ''),
         }
+
+        # Handle address lines: if both are missing, replace both with empty string
+        # This removes orphaned address placeholders from the document
+        has_address_line1 = bool(job_data.get('company_address_line1'))
+        has_address_line2 = bool(job_data.get('company_address_line2'))
+        
+        if not has_address_line1 and not has_address_line2:
+            # No address data at all - replace both placeholders with empty string
+            replacements['{{COMPANY_ADDRESS_LINE1}}'] = ''
+            replacements['{{COMPANY_ADDRESS_LINE2}}'] = ''
+        else:
+            # We have at least one address line - use empty string only for missing ones
+            if not has_address_line1:
+                replacements['{{COMPANY_ADDRESS_LINE1}}'] = ''
+            if not has_address_line2:
+                replacements['{{COMPANY_ADDRESS_LINE2}}'] = ''
 
         # Replace placeholders in all paragraphs
         for paragraph in doc.paragraphs:
@@ -144,20 +160,19 @@ class WordCoverLetterGenerator:
         """Replace placeholders in a paragraph while preserving formatting"""
         
         # First try: simple replacement within runs
+        replaced_placeholders = set()
         for run in paragraph.runs:
             for placeholder, value in replacements.items():
                 if placeholder in run.text:
                     run.text = run.text.replace(placeholder, str(value))
+                    replaced_placeholders.add(placeholder)
         
         # Second try: handle placeholders split across runs
         full_text = paragraph.text
         for placeholder, value in replacements.items():
-            if placeholder in full_text:
-                # Check if it was already replaced
-                already_replaced = any(str(value) in run.text for run in paragraph.runs)
-                if not already_replaced:
-                    # Placeholder is split - need special handling
-                    self._replace_split_placeholder(paragraph, placeholder, str(value))
+            if placeholder not in replaced_placeholders and placeholder in full_text:
+                # Placeholder is split across runs - need special handling
+                self._replace_split_placeholder(paragraph, placeholder, str(value))
     
     def _replace_split_placeholder(self, paragraph, placeholder: str, value: str) -> None:
         """Handle placeholders that are split across multiple runs"""
@@ -259,8 +274,20 @@ class WordCoverLetterGenerator:
         # Company address (left-aligned)
         p = doc.add_paragraph()
         p.add_run(f"{company_name}\n").bold = True
-        if job_data.get('company_address'):
+        
+        # Add company address lines if available
+        addr_line1 = job_data.get('company_address_line1')
+        addr_line2 = job_data.get('company_address_line2')
+        
+        if addr_line1:
+            p.add_run(f"{addr_line1}\n")
+        if addr_line2:
+            p.add_run(f"{addr_line2}\n")
+        
+        # Fallback to combined address field if individual lines not available
+        if not addr_line1 and not addr_line2 and job_data.get('company_address'):
             p.add_run(f"{job_data['company_address']}\n")
+        
         if job_data.get('location'):
             p.add_run(f"{job_data['location']}")
 

@@ -424,11 +424,11 @@ def retry_cover_letter(job_id: str) -> Response:
         try:
             from cover_letter import CoverLetterGenerator
             
-            logger.info(f"[{job_id}] Retrying cover letter generation...")
+            logger.info(f"[{job_id}] Retrying cover letter generation with auto_trim enabled...")
             
-            # Re-generate cover letter
+            # Re-generate cover letter WITH auto_trim to handle short content
             ai_generator = CoverLetterGenerator()
-            cover_letter_body = ai_generator.generate_cover_letter(job_data)
+            cover_letter_body = ai_generator.generate_cover_letter(job_data, auto_trim=True)
             
             if not cover_letter_body:
                 processing_status[job_id]['status'] = 'cover_letter_failed'

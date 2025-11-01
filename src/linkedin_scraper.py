@@ -80,7 +80,9 @@ class LinkedInScraper(BaseJobScraper):
             job_description = None
             if PLAYWRIGHT_AVAILABLE:
                 try:
-                    job_description = await self._scrape_with_playwright(direct_url)
+                    job_description, publication_date, work_mode = await self._scrape_with_playwright(direct_url)
+                    job_data['publication_date'] = publication_date
+                    job_data['work_mode'] = work_mode
                     self.logger.debug("Successfully extracted description with Playwright")
                 except Exception as e:
                     self.logger.warning("Playwright failed, falling back: %s", e)
@@ -93,10 +95,37 @@ class LinkedInScraper(BaseJobScraper):
                 job_description = self._format_description(job_description)
             
             job_data['job_description'] = job_description
-            job_data['career_page_link'] = self._extract_company_portal(soup, job_data['company_name'])
             
+            # Extract work mode from job posting (if not already extracted by Playwright)
+            if not job_data.get('work_mode'):
+                job_data['work_mode'] = self._extract_work_mode(soup)
+            
+            if job_data.get('work_mode'):
+                self.logger.debug("Work Mode: %s", job_data['work_mode'])
+            
+            # Publication date already extracted from Playwright above (if available)
+            if not job_data.get('publication_date'):
+                job_data['publication_date'] = self._extract_publication_date_from_soup(soup)
+            
+            if job_data.get('publication_date'):
+                self.logger.debug("Publication Date: %s", job_data['publication_date'])
+            
+            # Extract industry from sidebar criteria
+            industry = self._extract_industry_from_soup(soup)
+            if industry:
+                job_data['industry'] = industry
+                self.logger.debug("Industry: %s", job_data['industry'])
+            
+            # Extract company address from description
+            # Pass location as fallback (e.g., "Düsseldorf")
             if job_data['job_description']:
-                job_data['company_address'] = self._extract_address(job_data['job_description'])
+                job_data['company_address'] = self._extract_address(
+                    job_data['job_description'],
+                    fallback_location=job_data.get('location')
+                )
+                if job_data['company_address']:
+                    self.logger.debug("Company Address: %s", job_data['company_address'])
+                    self.logger.info("  Address: %s", job_data['company_address'])
             
             job_data['scraped_at'] = datetime.now().isoformat()
             
@@ -150,8 +179,11 @@ class LinkedInScraper(BaseJobScraper):
             'location': location
         }
     
-    async def _scrape_with_playwright(self, url: str) -> Optional[str]:
-        """Extract full job description using Playwright."""
+    async def _scrape_with_playwright(self, url: str) -> tuple[Optional[str], Optional[str], Optional[str]]:
+        """
+        Extract full job description, publication date, and work mode using Playwright.
+        Returns tuple: (description, publication_date, work_mode)
+        """
         try:
             async with async_playwright() as p:
                 browser = await p.chromium.launch(headless=True)
@@ -167,6 +199,7 @@ class LinkedInScraper(BaseJobScraper):
                 
                 await page.wait_for_timeout(2000)
                 
+                # Extract description
                 selectors = [
                     '[data-test-id="job-description"]',
                     'div.show-more-less-html__markup',
@@ -185,19 +218,25 @@ class LinkedInScraper(BaseJobScraper):
                     except:
                         pass
                 
+                # Extract full page HTML for date and work mode
+                page_html = await page.content()
+                publication_date = self._extract_date_from_html(page_html)
+                work_mode = self._extract_work_mode_from_html(page_html)
+                
                 await context.close()
                 await browser.close()
                 
                 if description:
                     text = description.strip()
                     text = re.sub(r'\s+', ' ', text)
-                    return text
+                else:
+                    text = None
                 
-                return None
+                return text, publication_date, work_mode
                 
         except Exception as e:
             self.logger.debug("Playwright extraction failed: %s", e)
-            return None
+            return None, None, None
     
     def _extract_from_static_html(self, soup: BeautifulSoup) -> str:
         """Fallback: Extract job description from static HTML."""
@@ -270,6 +309,278 @@ class LinkedInScraper(BaseJobScraper):
         
         return result.strip()
     
+    def _extract_work_mode_from_html(self, html_content: str) -> Optional[str]:
+        """
+        Extract work mode from rendered HTML content.
+        LinkedIn shows work mode as badge/chip buttons under the job title.
+        They appear as clickable elements with checkmarks: ✓ Hybrid, ✓ Remote, etc.
+        
+        Returns: 'remote', 'hybrid', or 'onsite'
+        """
+        try:
+            html_lower = html_content.lower()
+            
+            # Strategy: LinkedIn shows work mode in badge buttons under the job title
+            # Look for patterns like: <button>✓ Hybrid</button> or similar markup
+            
+            # Try to extract just the job header/title section which contains the work mode badges
+            # This avoids false positives from tracking attributes
+            header_match = re.search(
+                r'<[^>]*class="[^"]*jobs-details[^"]*"[^>]*>(.*?)<[^>]*class="[^"]*description[^"]*"',
+                html_content,
+                re.IGNORECASE | re.DOTALL
+            )
+            
+            if header_match:
+                search_text = header_match.group(1).lower()
+                self.logger.debug("Searching in extracted header section (%d chars)", len(search_text))
+            else:
+                search_text = html_lower
+                self.logger.debug("Using full HTML for search")
+            
+            # Look for work mode text in button/span elements (with or without checkmark)
+            # Pattern: ">  Hybrid  <" or "> ✓ Hybrid <" etc
+            
+            # Check for hybrid FIRST (most specific - must come before on-site check)
+            if re.search(r'>\s*[✓✔]?\s*hybrid\s*<', search_text) or \
+               re.search(r'\bhybrid\b', search_text):
+                self.logger.info("✓ Work mode detected: HYBRID")
+                return 'hybrid'
+            
+            # Check for remote
+            if re.search(r'>\s*[✓✔]?\s*remote\s*<', search_text) or \
+               re.search(r'\b(?:remote|work\s*from\s*home)\b', search_text):
+                self.logger.info("✓ Work mode detected: REMOTE")
+                return 'remote'
+            
+            # Check for on-site (check this LAST to avoid false positives)
+            if re.search(r'>\s*[✓✔]?\s*(?:on-site|onsite)\s*<', search_text) or \
+               re.search(r'\b(?:on-site|onsite|office\s*based)\b', search_text):
+                self.logger.info("✓ Work mode detected: ON-SITE")
+                return 'onsite'
+            
+            self.logger.warning("⚠ No work mode pattern found")
+            return None
+            
+        except Exception as e:
+            self.logger.error("✗ Error extracting work mode from HTML: %s", e)
+            return None
+    
+    def _extract_work_mode(self, soup: BeautifulSoup) -> Optional[str]:
+        """
+        Extract work mode (remote, hybrid, onsite) from LinkedIn page.
+        First tries job criteria section, then falls back to job description text.
+        Uses priority hierarchy: remote > hybrid > on-site
+        If not found in either, returns None (no label will be set).
+        """
+        try:
+            found_modes = set()
+            
+            # Strategy 1: Look in job criteria section (if visible)
+            criteria_sections = soup.find_all('li', class_=re.compile(r'description__job-criteria-item'))
+            
+            for section in criteria_sections:
+                text = section.get_text(strip=True).lower()
+                
+                # Check for all patterns, collect all matches
+                if re.search(r'\bhybrid\b', text):
+                    found_modes.add('hybrid')
+                    self.logger.debug("Found 'hybrid' in criteria section")
+                
+                if re.search(r'\b(?:remote|work\s+from\s+home|wfh)\b', text):
+                    found_modes.add('remote')
+                    self.logger.debug("Found 'remote' in criteria section")
+                
+                if re.search(r'\b(?:on-site|onsite|on\s+site|office)\b', text):
+                    found_modes.add('onsite')
+                    self.logger.debug("Found 'on-site' in criteria section")
+            
+            # If found in criteria, use the highest priority
+            if found_modes:
+                return self._get_highest_priority_mode(found_modes)
+            
+            # Strategy 2: Fallback - search in job description text
+            desc_text = soup.get_text(separator=' ').lower()
+            
+            if desc_text:
+                # Check for all patterns, collect all matches
+                if re.search(r'\bhybrid\b', desc_text):
+                    found_modes.add('hybrid')
+                    self.logger.debug("Found 'hybrid' in job description")
+                
+                if re.search(r'\b(?:remote|work\s+from\s+home|homeoffice|home\s+office|wfh)\b', desc_text):
+                    found_modes.add('remote')
+                    self.logger.debug("Found 'remote' in job description")
+                
+                if re.search(r'\b(?:on-site|onsite|on\s+site|office)\b', desc_text):
+                    found_modes.add('onsite')
+                    self.logger.debug("Found 'on-site' in job description")
+            
+            if found_modes:
+                return self._get_highest_priority_mode(found_modes)
+            
+            self.logger.debug("No work mode pattern found - leaving unset")
+            return None
+            
+        except Exception as e:
+            self.logger.error("Error extracting work mode: %s", e)
+            return None
+    
+    def _get_highest_priority_mode(self, modes: set) -> str:
+        """
+        Return the highest priority work mode.
+        Priority hierarchy: remote > hybrid > on-site
+        """
+        if 'remote' in modes:
+            self.logger.debug("Multiple modes found, using highest priority: remote")
+            return 'remote'
+        elif 'hybrid' in modes:
+            self.logger.debug("Multiple modes found, using highest priority: hybrid")
+            return 'hybrid'
+        elif 'onsite' in modes:
+            self.logger.debug("Using mode: on-site")
+            return 'onsite'
+        return None
+    
+    def _extract_date_from_html(self, html: str) -> Optional[str]:
+        """
+        Extract publication date from rendered HTML content (from Playwright).
+        Searches for "Posted X days ago", "Reposted X days ago", or similar patterns.
+        Returns ISO 8601 format date.
+        """
+        try:
+            from datetime import datetime, timedelta
+            
+            # Search for date text in HTML
+            date_patterns = [
+                r'(?:Posted|Reposted)\s+(\d+)\s+(second|minute|hour|day|week|month)s?\s+ago',
+                r'Updated\s+(\d+)\s+(second|minute|hour|day|week|month)s?\s+ago',
+                r'(\d{4}-\d{2}-\d{2})',
+            ]
+            
+            for pattern in date_patterns:
+                match = re.search(pattern, html, re.IGNORECASE)
+                if match:
+                    if len(match.groups()) == 2:
+                        # Relative date format
+                        number = int(match.group(1))
+                        unit = match.group(2).lower().rstrip('s')
+                        
+                        now = datetime.utcnow()
+                        
+                        if unit == 'second':
+                            pub_date = now - timedelta(seconds=number)
+                        elif unit == 'minute':
+                            pub_date = now - timedelta(minutes=number)
+                        elif unit == 'hour':
+                            pub_date = now - timedelta(hours=number)
+                        elif unit == 'day':
+                            pub_date = now - timedelta(days=number)
+                        elif unit == 'week':
+                            pub_date = now - timedelta(weeks=number)
+                        elif unit == 'month':
+                            pub_date = now - timedelta(days=number * 30)
+                        else:
+                            continue
+                        
+                        self.logger.debug("Publication date extracted: %s", pub_date.isoformat())
+                        return pub_date.isoformat() + 'Z'
+                    else:
+                        # ISO format date
+                        date_str = match.group(1)
+                        if re.match(r'\d{4}-\d{2}-\d{2}', date_str):
+                            self.logger.debug("Publication date extracted: %s", date_str)
+                            return f"{date_str}T00:00:00Z"
+            
+            self.logger.debug("No publication date found in HTML")
+            return None
+        except Exception as e:
+            self.logger.debug("Error extracting date from HTML: %s", e)
+            return None
+
+    def _extract_publication_date_from_soup(self, soup: BeautifulSoup) -> Optional[str]:
+        """
+        Extract job publication date from static soup content.
+        Returns ISO 8601 format date.
+        Fallback when Playwright is not available.
+        """
+        try:
+            from datetime import datetime, timedelta
+            
+            # Try to find posted/updated date in the page
+            date_patterns = [
+                r'(?:Posted|Reposted)\s+(\d+)\s+(second|minute|hour|day|week|month)s?\s+ago',
+                r'Updated\s+(\d+)\s+(second|minute|hour|day|week|month)s?\s+ago',
+                r'(\d{4}-\d{2}-\d{2})',
+            ]
+            
+            # Search in visible text
+            page_text = soup.get_text()
+            
+            for pattern in date_patterns:
+                match = re.search(pattern, page_text, re.IGNORECASE)
+                if match:
+                    if len(match.groups()) == 2:
+                        # Relative date format
+                        number = int(match.group(1))
+                        unit = match.group(2).lower().rstrip('s')
+                        
+                        now = datetime.utcnow()
+                        
+                        if unit == 'second':
+                            pub_date = now - timedelta(seconds=number)
+                        elif unit == 'minute':
+                            pub_date = now - timedelta(minutes=number)
+                        elif unit == 'hour':
+                            pub_date = now - timedelta(hours=number)
+                        elif unit == 'day':
+                            pub_date = now - timedelta(days=number)
+                        elif unit == 'week':
+                            pub_date = now - timedelta(weeks=number)
+                        elif unit == 'month':
+                            pub_date = now - timedelta(days=number * 30)
+                        else:
+                            continue
+                        
+                        return pub_date.isoformat() + 'Z'
+                    else:
+                        # ISO format date
+                        date_str = match.group(1)
+                        if re.match(r'\d{4}-\d{2}-\d{2}', date_str):
+                            return f"{date_str}T00:00:00Z"
+            
+            return None
+        except Exception as e:
+            self.logger.debug("Error extracting publication date from soup: %s", e)
+            return None
+    
+    def _extract_industry_from_soup(self, soup: BeautifulSoup) -> Optional[str]:
+        """
+        Extract industry information from LinkedIn sidebar criteria.
+        Looks for elements with class 'description__job-criteria-item' that contain 'Industries'.
+        Returns comma-separated string of industries, or None if not found.
+        """
+        try:
+            # Find all job criteria items
+            criteria_items = soup.find_all(class_=lambda x: x and 'description__job-criteria-item' in (x if x else ''))
+            
+            for item in criteria_items:
+                text = item.get_text(separator=' | ', strip=True)
+                parts = text.split(' | ')
+                
+                # Look for the "Industries" label (case-insensitive)
+                if len(parts) >= 2 and parts[0].strip().lower() == 'industries':
+                    industry_value = ' | '.join(parts[1:]).strip()
+                    self.logger.debug("Industry extracted from sidebar: %s", industry_value)
+                    return industry_value
+            
+            self.logger.debug("No industry information found in sidebar criteria")
+            return None
+            
+        except Exception as e:
+            self.logger.debug("Error extracting industry from sidebar: %s", e)
+            return None
+    
     def _extract_company_portal(self, soup: BeautifulSoup, company_name: str) -> Optional[str]:
         """Extract company website/portal link."""
         for link in soup.find_all('a', href=True):
@@ -291,20 +602,74 @@ class LinkedInScraper(BaseJobScraper):
         
         return None
     
-    def _extract_address(self, description: str) -> Optional[str]:
-        """Extract company address from description."""
+    def _extract_address(self, description: str, fallback_location: Optional[str] = None) -> Optional[str]:
+        """
+        Extract company address from description text.
+        
+        Strategy:
+        1. Search description for address keywords (Address, Headquarters, Based in, Office in, etc.)
+        2. If found, return the address
+        3. If not found in description, return None (NOT the fallback location)
+        
+        The fallback_location is only passed for reference but is not used as a fallback.
+        This ensures we only set company_address when explicitly found in the description.
+        
+        Args:
+            description: Job description text
+            fallback_location: Card location (e.g., "Düsseldorf") - reference only, not used as fallback
+            
+        Returns:
+            Address string if found in description, else None
+        """
+        if not description:
+            return None
+        
+        # Search for address keywords in description
         patterns = [
             r'(?:Address|Headquarters|Located):\s*(.+?)(?:\n|,)',
-            r'(?:Based in|Office in):\s*(.+?)(?:\n|,)',
+            r'(?:Based in|Office in|Office location):\s*(.+?)(?:\n|,)',
+            r'(?:Our office|Our address):\s*(.+?)(?:\n|,)',
             r'(\d+\s+\w+(?:\s+\w+)?,\s+\d{5},?\s+\w+)',
         ]
         
         for pattern in patterns:
             match = re.search(pattern, description, re.IGNORECASE)
             if match:
-                return match.group(1).strip()
+                address = match.group(1).strip()
+                self.logger.debug("Address found in description using pattern: %s", pattern)
+                return address
         
+        # No address keywords found - return None (not fallback)
+        self.logger.debug("No address keywords found in description")
         return None
+    
+    def _extract_industry_from_html(self, html: str) -> Optional[str]:
+        """
+        Extract industry information from LinkedIn sidebar criteria.
+        Looks for elements with class 'description__job-criteria-item' that contain 'Industries'.
+        """
+        try:
+            soup = BeautifulSoup(html, 'html.parser')
+            
+            # Find all job criteria items
+            criteria_items = soup.find_all(class_=lambda x: x and 'description__job-criteria-item' in (x if x else ''))
+            
+            for item in criteria_items:
+                text = item.get_text(separator=' | ', strip=True)
+                parts = text.split(' | ')
+                
+                # Look for the "Industries" label
+                if len(parts) >= 2 and parts[0].strip().lower() == 'industries':
+                    industry_value = ' | '.join(parts[1:]).strip()
+                    self.logger.debug("Industry extracted: %s", industry_value)
+                    return industry_value
+            
+            self.logger.debug("No industry information found in sidebar criteria")
+            return None
+            
+        except Exception as e:
+            self.logger.debug("Error extracting industry from HTML: %s", e)
+            return None
 
 
 if __name__ == "__main__":

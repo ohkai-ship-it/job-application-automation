@@ -80,8 +80,9 @@ class TrelloConnect:
         # Date fields
         self.field_publication_date = get_str('TRELLO_FIELD_AUSSCHREIBUNGSDATUM', default='')  # Ausschreibungsdatum
         
-        # Additional text field
+        # Additional text fields
         self.field_firma_person = get_str('TRELLO_FIELD_FIRMA_PERSON', default='')  # Firma - Person
+        self.field_branchenspezifikation = get_str('TRELLO_FIELD_BRANCHENSPEZIFIKATION', default='')  # Branchenspezifikation (Industry)
         
         self.base_url = "https://api.trello.com/1"
         self.auth_params = {'key': self.api_key, 'token': self.token}
@@ -107,17 +108,7 @@ class TrelloConnect:
         return f"[{company}] {title} ({location})"
     
     def _build_card_description(self, job_data: Dict[str, Any]) -> str:
-        """
-        Build card description with ONLY the complete job description text.
-        No formatting, no company info - just the raw JD text.
-        
-        Args:
-            job_data: Normalized job data dict
-            
-        Returns:
-            Job description text only
-        """
-        # Return only the job description text, nothing else
+        """Build card description from job data."""
         return job_data.get('job_description', 'No job description available')
     
     def _enrich_job_data(self, job_data: Dict[str, Any]) -> Dict[str, Any]:
@@ -176,10 +167,8 @@ class TrelloConnect:
             enriched['work_mode'] = 'hybrid'
         elif 'office' in work_mode or 'onsite' in work_mode or 'vor ort' in work_mode:
             enriched['work_mode'] = 'onsite'
-        elif not enriched.get('work_mode'):
-            # Default if not detected
-            enriched['work_mode'] = 'onsite'
-            self.logger.debug("Defaulting work_mode to onsite")
+        # If no work mode detected, leave as None (don't apply default label)
+        # This prevents false "on-site" labels when work mode cannot be determined
         
         return enriched
     
@@ -283,7 +272,7 @@ class TrelloConnect:
         text_fields = [
             (self.field_company, job_data.get('company_name')),
             (self.field_job_title, job_data.get('job_title_clean') or job_data.get('job_title')),
-            (self.field_firma_person, "Für Arbeitgeber"),  # Default value matching previous implementation
+            (self.field_branchenspezifikation, job_data.get('industry')),  # Branchenspezifikation (Industry)
         ]
         
         for field_id, value in text_fields:
@@ -464,10 +453,8 @@ class TrelloConnect:
         if source_url:
             attachments_to_add.append(('Ausschreibung', source_url))
         
-        # Add career page if available
-        career_page = job_data.get('career_page_link', '')
-        if career_page:
-            attachments_to_add.append(('Firmenportal', career_page))
+        # Add Firmenportal link (World Apprentice LinkedIn)
+        attachments_to_add.append(('Firmenportal', 'https://linkedin.com/in/worldapprentice'))
         
         # Add each attachment
         for name, url_to_attach in attachments_to_add:
@@ -557,7 +544,7 @@ class TrelloConnect:
                 card_url = card_data.get('shortUrl', f"https://trello.com/c/{card_id}")
                 
                 self.logger.info("Created Trello card: %s", card_id)
-                print(f"✓ Trello card created: {card_url}")
+                print(f"[OK] Trello card created: {card_url}")
                 
                 # Best-effort: set custom fields and attachments
                 if card_id:

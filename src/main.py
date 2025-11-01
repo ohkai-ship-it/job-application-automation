@@ -343,7 +343,8 @@ def process_job_posting(
                 else:
                     lang_for_generation = None  # auto-detect
                 
-                cover_letter_body = ai_generator.generate_cover_letter(job_data, target_language=lang_for_generation)
+                # Generate with auto_trim=True to handle content that's slightly short
+                cover_letter_body = ai_generator.generate_cover_letter(job_data, target_language=lang_for_generation, auto_trim=True)
                 
                 # Determine language: use target_language if forced, otherwise detect from job description
                 if target_language == 'de':
