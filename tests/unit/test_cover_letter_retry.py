@@ -69,6 +69,10 @@ class TestCoverLetterRetryLogic:
         
         generator = CoverLetterGenerator()
         
+        # Mock CV files
+        generator.cv_en = mock_cv_content
+        generator.cv_de = mock_cv_content
+        
         with patch.object(generator.client.chat.completions, 'create') as mock_create:
             # Mock the OpenAI response
             mock_response = Mock()
@@ -417,6 +421,11 @@ class TestCoverLetterRetryMetrics:
         
         generator = CoverLetterGenerator()
         
+        # Mock CV files
+        cv_content = "Test CV content"
+        generator.cv_en = cv_content
+        generator.cv_de = cv_content
+        
         # Generate valid content (190 words)
         valid_response = " ".join(["word"] * 190)
         
@@ -426,7 +435,7 @@ class TestCoverLetterRetryMetrics:
             mock_create.return_value = mock_response
             
             with patch.object(generator.logger, 'info') as mock_log:
-                result = generator.generate_cover_letter({'company_name': 'Test'})
+                result = generator.generate_cover_letter({'company_name': 'Test', 'job_description': 'Test job'})
                 
                 # Logger should have been called with word count info
                 assert generator.logger.info.called or True  # Logging happens, but we're testing it was created
