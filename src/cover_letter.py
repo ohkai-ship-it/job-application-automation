@@ -273,7 +273,17 @@ class CoverLetterGenerator:
                 return "Best regards,"  # Professional standard
 
     @exponential_backoff_retry(max_attempts=3, initial_delay=1.0, backoff_factor=2.0)
-    def generate_cover_letter(self, job_data: Dict[str, Any], target_language: Optional[str] = None, *, tone: Optional[str] = None, auto_trim: bool = False) -> str:
+    def generate_cover_letter(self, job_data: Dict[str, Any], target_language: Optional[str] = None, *, tone: Optional[str] = None, auto_trim: bool = False, debug_truncate: bool = False) -> str:
+        """
+        Generate a cover letter using AI.
+        
+        Args:
+            job_data: Job posting information
+            target_language: 'german' or 'english' (auto-detected if not provided)
+            tone: Optional tone preference
+            auto_trim: If True, attempt to fix too-short content via auto_trim
+            debug_truncate: If True, artificially truncate to 120 words for testing retry flow
+        """
         job_description = job_data.get('job_description', '')
         if not target_language:
             target_language = self.detect_language(job_description)
@@ -312,6 +322,16 @@ class CoverLetterGenerator:
         )
 
         cover_letter_body = response.choices[0].message.content.strip()
+
+        # DEBUG: If debug_truncate enabled, artificially truncate to 120 words for testing retry flow
+        if debug_truncate:
+            words = re.findall(r"\b\w+\b", cover_letter_body)
+            if len(words) > 120:
+                # Keep only first 120 words
+                truncated_words = words[:120]
+                # Reconstruct text from first 120 words
+                cover_letter_body = ' '.join(truncated_words)
+                self.logger.warning("[DEBUG] Truncated cover letter to 120 words for testing retry flow (original: %d words)", len(words))
 
         # Enforce 180–240 words (optionally nudge with auto_trim)
         # TODO: For testing, we're accepting 170-250 words (slightly relaxed)

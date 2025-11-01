@@ -137,6 +137,7 @@ def process() -> Response:
     generate_documents = data.get('generate_documents', False)
     generate_pdf = data.get('generate_pdf', False)
     target_language = data.get('target_language', 'auto')  # NEW: Target language (auto, de, en)
+    debug_truncate = data.get('debug_truncate', False)  # NEW: Debug mode for testing retry
     
     # Validation: At least one option must be selected
     if not create_trello_card and not generate_documents:
@@ -167,7 +168,7 @@ def process() -> Response:
     # Process in background thread with settings
     thread = threading.Thread(
         target=process_in_background,
-        args=(job_id, url, create_trello_card, generate_documents, generate_pdf, target_language)
+        args=(job_id, url, create_trello_card, generate_documents, generate_pdf, target_language, debug_truncate)
     )
     thread.start()
     
@@ -179,7 +180,8 @@ def process_in_background(
     create_trello_card: bool = True,
     generate_documents: bool = True,
     generate_pdf: bool = False,
-    target_language: str = 'auto'  # NEW: Target language (auto, de, en)
+    target_language: str = 'auto',  # NEW: Target language (auto, de, en)
+    debug_truncate: bool = False  # NEW: Debug mode - truncate to 120 words
 ) -> None:
     """Process job in background with real-time progress updates"""
     try:
@@ -246,7 +248,8 @@ def process_in_background(
             generate_pdf=generate_pdf,
             create_trello_card=create_trello_card,
             target_language=target_language,
-            progress_callback=progress_callback  # NEW: Pass callback
+            progress_callback=progress_callback,  # NEW: Pass callback
+            debug_truncate=debug_truncate  # NEW: Pass debug flag
         )
         logger.info(f"[{job_id}] Process result status: {result.get('status')}")
         

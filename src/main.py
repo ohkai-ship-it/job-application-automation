@@ -106,7 +106,8 @@ def process_job_posting(
     create_trello_card: bool = True,  # NEW: Whether to create Trello card
     target_language: str = 'auto',  # NEW: Target language (auto, de, en)
     skip_duplicate_check: bool = False,  # Allow skipping duplicate check for testing
-    progress_callback: Optional[callable] = None  # NEW: Callback to report progress
+    progress_callback: Optional[callable] = None,  # NEW: Callback to report progress
+    debug_truncate: bool = False  # NEW: Debug mode - truncate cover letters to 120 words to test retry
 ) -> Dict[str, Any]:
     """
     Complete workflow: Scrape job posting, create Trello card, generate cover letter and PDF
@@ -120,6 +121,7 @@ def process_job_posting(
         skip_duplicate_check (bool): Skip duplicate detection (for testing/re-processing)
         progress_callback (callable): Optional callback function to report progress. Called as:
                                      progress_callback(progress=0-100, message='...', job_title='...', company_name='...')
+        debug_truncate (bool): Debug mode - artificially truncate to 120 words to test retry flow
         
     Returns:
         dict: Result with status and data
@@ -371,7 +373,12 @@ def process_job_posting(
                     lang_for_generation = None  # auto-detect
                 
                 # Generate with auto_trim=True to handle content that's slightly short
-                cover_letter_body = ai_generator.generate_cover_letter(job_data, target_language=lang_for_generation, auto_trim=True)
+                cover_letter_body = ai_generator.generate_cover_letter(
+                    job_data, 
+                    target_language=lang_for_generation, 
+                    auto_trim=True,
+                    debug_truncate=debug_truncate  # Pass debug flag
+                )
                 
                 # Determine language: use target_language if forced, otherwise detect from job description
                 if target_language == 'de':
