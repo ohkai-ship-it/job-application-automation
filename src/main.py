@@ -130,36 +130,33 @@ def process_job_posting(
     logger.info("%s", "=" * 80)
     logger.info("Processing: %s", url)
     
-    # Step 0: Check for duplicates
-    # TODO: PRODUCTION - Change this to stop processing on duplicate (return early)
-    # For now, we just warn but continue to make testing easier
+    # Step 0a: URL Hash Check (fast, before scraping)
+    db = None
+    is_duplicate = False
+    existing_job = None
+    duplicate_method = 'none'
+    
     if not skip_duplicate_check:
-        logger.info("STEP 0: Checking for duplicates...")
+        logger.info("STEP 0a: URL hash duplicate check...")
         logger.info("%s", "-" * 80)
         
         db = get_db()
-        is_duplicate, existing_job = db.check_duplicate(url)
+        is_duplicate, existing_job, duplicate_method = db.check_duplicate(url)
         
-        if is_duplicate:
-            logger.warning("⚠️  DUPLICATE DETECTED!")
+        if is_duplicate and duplicate_method == 'url_hash':
+            # EXACT duplicate found - stop immediately
+            logger.warning("⚠️  EXACT DUPLICATE DETECTED (URL hash match)!")
             logger.warning("This job was already processed:")
             logger.warning("  Company: %s", existing_job['company_name'])
             logger.warning("  Job Title: %s", existing_job['job_title'])
             logger.warning("  Processed: %s", existing_job['processed_at'])
             if existing_job.get('trello_card_url'):
                 logger.warning("  Trello Card: %s", existing_job['trello_card_url'])
-            if existing_job.get('docx_file_path'):
-                logger.warning("  Cover Letter: %s", existing_job['docx_file_path'])
-            logger.warning("⚠️  CONTINUING ANYWAY (testing mode)")
-            logger.warning("⚠️  TODO: In production, this should stop processing!")
-            # PRODUCTION: Uncomment the following return statement
-            # return {
-            #     'status': 'duplicate',
-            #     'existing_job': existing_job,
-            #     'message': 'Job already processed. Use skip_duplicate_check=True to reprocess.'
-            # }
+            logger.warning("⚠️  SKIPPING PROCESSING (exact duplicate)")
+            # PRODUCTION: This should return early
+            # return {'status': 'duplicate', 'existing_job': existing_job, 'message': 'Exact duplicate found'}
         else:
-            logger.info("✓ No duplicate found, proceeding...")
+            logger.info("✓ No URL hash duplicate found, proceeding to scrape...")
     
     # Step 1: Scrape the job posting
     logger.info("STEP 1: Scraping job posting...")
@@ -199,6 +196,36 @@ def process_job_posting(
                 logger.info(f"Found company page: {company_page_url}")
         except Exception as e:
             logger.warning(f"Could not find company page: {e}")
+    
+    # Step 0b: Semantic Duplicate Check (after scraping)
+    if not skip_duplicate_check and not is_duplicate:
+        logger.info("STEP 0b: Semantic duplicate check (Company + Job Title)...")
+        logger.info("%s", "-" * 80)
+        
+        if not db:
+            db = get_db()
+        
+        is_duplicate, existing_job, duplicate_method = db.check_duplicate(
+            url, 
+            company_name=job_data.get('company_name'),
+            job_title=job_data.get('job_title')
+        )
+        
+        if is_duplicate and duplicate_method == 'semantic':
+            logger.warning("⚠️  SEMANTIC DUPLICATE DETECTED (reposted or cross-source)!")
+            logger.warning("This job was already processed:")
+            logger.warning("  Company: %s", existing_job['company_name'])
+            logger.warning("  Job Title: %s", existing_job['job_title'])
+            logger.warning("  Original URL: %s", existing_job['source_url'])
+            logger.warning("  This URL:     %s", url)
+            logger.warning("  Processed: %s", existing_job['processed_at'])
+            if existing_job.get('trello_card_url'):
+                logger.warning("  Trello Card: %s", existing_job['trello_card_url'])
+            logger.warning("⚠️  SKIPPING PROCESSING (semantic duplicate - reposted job)")
+            # PRODUCTION: This should return early
+            # return {'status': 'duplicate', 'existing_job': existing_job, 'message': 'Semantic duplicate found (reposted job)'}
+        else:
+            logger.info("✓ No semantic duplicate found, proceeding...")
     
     if progress_callback:
         progress_callback(
@@ -479,11 +506,12 @@ def process_job_posting(
         try:
             db = get_db()
             
-            # Check if this is a duplicate before trying to save
-            is_duplicate, _ = db.check_duplicate(url)
+            # Use the is_duplicate flag that was already determined in Steps 0a/0b
+            # Don't re-check here because it would overwrite semantic detection with only hash check
             
             if is_duplicate:
                 logger.info("⚠️  Skipping database save - job already exists in database")
+                logger.info("    Duplicate method: %s", duplicate_method)
                 logger.info("    (This is expected in testing mode when processing duplicates)")
             else:
                 # Extract AI metadata if available

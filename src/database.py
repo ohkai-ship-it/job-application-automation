@@ -5,6 +5,7 @@ Lightweight SQLite database for duplicate detection and generation tracking.
 
 import sqlite3
 import hashlib
+import os
 from pathlib import Path
 from datetime import datetime
 from typing import Optional, Dict, Any, List
@@ -147,23 +148,37 @@ class ApplicationDB:
         """
         return hashlib.sha256(source_url.encode()).hexdigest()[:16]
     
-    def check_duplicate(self, source_url: str) -> tuple[bool, Optional[Dict[str, Any]]]:
+    def check_duplicate(self, source_url: str, company_name: Optional[str] = None, 
+                       job_title: Optional[str] = None) -> tuple[bool, Optional[Dict[str, Any]], str]:
         """
-        Check if a job URL has already been processed.
+        Check if a job URL has already been processed using two-stage detection:
+        
+        Stage 1: URL Hash Match
+        - Exact duplicate (same URL or URL with same hash)
+        
+        Stage 2: Semantic Match (fallback)
+        - If company_name and job_title provided, check for semantic duplicates
+        - Detects reposted jobs or cross-source duplicates (same job on different URLs)
         
         Args:
             source_url: Job posting URL to check
+            company_name: Optional - for semantic duplicate detection
+            job_title: Optional - for semantic duplicate detection
             
         Returns:
-            Tuple of (is_duplicate, existing_job_data or None)
+            Tuple of (is_duplicate, existing_job_data or None, detection_method)
+            - detection_method: 'url_hash', 'semantic', or 'none'
         """
         job_id = self._calculate_job_id(source_url)
         
         with self._get_connection() as conn:
             cursor = conn.cursor()
+            
+            # STAGE 1: URL Hash Match (exact duplicates)
+            logger.debug(f"STAGE 1: Checking URL hash match for job_id: {job_id}")
             cursor.execute("""
                 SELECT id, job_id, company_name, job_title, processed_at,
-                       trello_card_url, docx_file_path
+                       trello_card_url, docx_file_path, source_url
                 FROM processed_jobs
                 WHERE job_id = ? OR source_url = ?
             """, (job_id, source_url))
@@ -171,11 +186,38 @@ class ApplicationDB:
             row = cursor.fetchone()
             
             if row:
-                logger.info(f"Duplicate found: {row['company_name']} - {row['job_title']}")
-                return True, dict(row)
+                logger.info(f"[STAGE 1] Exact duplicate found via URL hash: {row['company_name']} - {row['job_title']}")
+                return True, dict(row), 'url_hash'
+            
+            # STAGE 2: Semantic Match (reposted/cross-source duplicates)
+            if company_name and job_title:
+                logger.debug(f"STAGE 2: Checking semantic match for: {company_name} - {job_title}")
+                
+                # Normalize the search terms (case-insensitive, trim whitespace)
+                company_search = company_name.strip().lower()
+                title_search = job_title.strip().lower()
+                
+                cursor.execute("""
+                    SELECT id, job_id, company_name, job_title, processed_at,
+                           trello_card_url, docx_file_path, source_url
+                    FROM processed_jobs
+                    WHERE LOWER(TRIM(company_name)) = ? 
+                      AND LOWER(TRIM(job_title)) = ?
+                    LIMIT 1
+                """, (company_search, title_search))
+                
+                row = cursor.fetchone()
+                
+                if row:
+                    logger.info(f"[STAGE 2] Semantic duplicate found: {row['company_name']} - {row['job_title']}")
+                    logger.info(f"          Original URL: {row['source_url']}")
+                    logger.info(f"          This URL:    {source_url}")
+                    return True, dict(row), 'semantic'
             else:
-                logger.debug(f"No duplicate found for job_id: {job_id}")
-                return False, None
+                logger.debug("STAGE 2: Skipped (company_name or job_title not provided)")
+            
+            logger.debug(f"No duplicate found for job_id: {job_id}")
+            return False, None, 'none'
     
     def save_processed_job(
         self,
@@ -497,12 +539,20 @@ def get_db() -> ApplicationDB:
     """
     Get singleton database instance.
     
+    Respects APP_ENV environment variable to load environment-specific config:
+    - APP_ENV=production → uses db/applications.db
+    - APP_ENV=development → uses db/applications_dev.db (default)
+    - APP_ENV=test → uses db/applications_test.db
+    
     Returns:
         ApplicationDB instance
     """
     global _db_instance
     if _db_instance is None:
-        _db_instance = ApplicationDB()
+        # Load environment-specific config if needed
+        from utils.env import get_str
+        db_path = get_str('DATABASE_FILE', default='db/applications_dev.db')
+        _db_instance = ApplicationDB(db_path=db_path)
     return _db_instance
 
 
