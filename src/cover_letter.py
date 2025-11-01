@@ -337,6 +337,7 @@ class CoverLetterGenerator:
         # TODO: For testing, we're accepting 170-250 words (slightly relaxed)
         # Production should use strict 180-240 range
         word_count = len(re.findall(r"\b\w+\b", cover_letter_body))
+
         if (word_count < 170 or word_count > 250) and auto_trim:
             cover_letter_body = self._auto_trim_to_range(cover_letter_body, 180, 240)
             word_count = len(re.findall(r"\b\w+\b", cover_letter_body))

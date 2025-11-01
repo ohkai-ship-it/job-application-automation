@@ -554,7 +554,12 @@ def process_job_posting(
 
     # Determine overall status
     has_errors = bool(trello_error or cover_letter_error)
-    overall_status = 'success' if not has_errors else 'partial_success'
+    
+    # NEW: If only cover letter failed (no trello error), mark as cover_letter_failed for retry
+    if cover_letter_error and not trello_error:
+        overall_status = 'cover_letter_failed'
+    else:
+        overall_status = 'success' if not has_errors else 'partial_success'
     
     logger.info("Summary:")
     logger.info("  Company: %s", job_data.get('company_name', 'N/A'))
