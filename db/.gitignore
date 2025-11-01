@@ -1,0 +1,26 @@
+# Database files - git-ignored to keep production data local
+*.db
+*.sqlite
+*.sqlite3
+
+# Exception: keep this .gitignore file
+!.gitignore
+
+# README for database files
+# This directory is git-ignored to prevent:
+# - Committing production application data (applications.db)
+# - Committing test artifacts (applications_dev.db, applications_test.db)
+#
+# Database files created by the application:
+# - applications.db        (production: real job applications)
+# - applications_dev.db    (development: for testing code changes)
+# - applications_test.db   (testing: isolated for pytest)
+#
+# To migrate production data from Trello:
+# 1. Set APP_ENV=production
+# 2. Run: python scripts/import_trello_to_db.py
+# 3. This creates applications.db with all Trello card data
+#
+# For development and testing:
+# - applications_dev.db is your safe playground
+# - applications_test.db is auto-managed by pytest

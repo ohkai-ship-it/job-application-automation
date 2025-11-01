@@ -167,8 +167,9 @@ class TrelloConnect:
             enriched['work_mode'] = 'hybrid'
         elif 'office' in work_mode or 'onsite' in work_mode or 'vor ort' in work_mode:
             enriched['work_mode'] = 'onsite'
-        # If no work mode detected, leave as None (don't apply default label)
-        # This prevents false "on-site" labels when work mode cannot be determined
+        else:
+            # Default to 'onsite' if no work mode detected
+            enriched['work_mode'] = 'onsite'
         
         return enriched
     

@@ -1,7 +1,7 @@
 """Environment variable handling for the application.
 
 This module provides a consistent way to load and access environment variables
-from the config/.env file.
+from the config/.env file and environment-specific overrides.
 """
 
 import os
@@ -9,19 +9,39 @@ from pathlib import Path
 from typing import Optional
 from dotenv import load_dotenv
 
-# Get path to config/.env
-ENV_PATH = Path(__file__).parent.parent.parent / 'config' / '.env'
+# Get path to config directory
+CONFIG_DIR = Path(__file__).parent.parent.parent / 'config'
+ENV_PATH = CONFIG_DIR / '.env'
 
 def load_env() -> bool:
-    """Load environment variables from config/.env.
+    """Load environment variables from config files.
+    
+    Priority (highest to lowest):
+    1. config/.env.{APP_ENV} (e.g., .env.production, .env.development, .env.test)
+    2. config/.env (default/fallback)
+    
+    APP_ENV defaults to 'development' if not set.
     
     Returns:
-        bool: True if successful, False if file not found
+        bool: True if successful, False if no config files found
     """
-    if not os.path.exists(ENV_PATH):
-        return False
+    app_env = os.getenv('APP_ENV', 'development')
     
-    return load_dotenv(ENV_PATH)
+    # Try environment-specific file first
+    env_specific_path = CONFIG_DIR / f'.env.{app_env}'
+    if env_specific_path.exists():
+        load_dotenv(env_specific_path)
+        # Also load base .env for any missing values
+        if ENV_PATH.exists():
+            load_dotenv(ENV_PATH, override=False)  # Don't override values from .env.{env}
+        return True
+    
+    # Fall back to base .env
+    if ENV_PATH.exists():
+        load_dotenv(ENV_PATH)
+        return True
+    
+    return False
 
 def validate_env(required_vars: list[str]) -> None:
     """Validate that required environment variables are set.

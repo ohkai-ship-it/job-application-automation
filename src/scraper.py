@@ -407,16 +407,21 @@ class StepstoneScraper(BaseJobScraper):
         return None
     
     def _clean_job_title(self, title: Optional[str]) -> Optional[str]:
-        """Remove gender markers from job titles."""
+        """Remove gender markers from job titles (German and English variants)."""
         if not title:
             return title
         
         gender_patterns = [
+            # German variants (m/w/d = male/female/diverse)
             r'\(m/w/d\)', r'\(w/m/d\)', r'\(d/m/w\)',
-            r'\(m/f/d\)', r'\(f/m/d\)', r'\(gn\)',
             r'\(m/w\)', r'\(w/m\)',
-            r'\(all genders\)', r'\(x/w/m\)',
-            r'm/w/d', r'w/m/d',
+            # English variants (m/f/x, f/m/x = male/female/non-binary)
+            r'\(m/f/d\)', r'\(f/m/d\)', r'\(m/f/x\)', r'\(f/m/x\)',
+            r'\(m/f\)', r'\(f/m\)',
+            r'\(gn\)', r'\(all genders\)', r'\(x/w/m\)',
+            # Non-parenthesized versions
+            r'm/w/d', r'w/m/d', r'm/f/d', r'f/m/d', r'm/f/x', r'f/m/x',
+            r'm/w(?!\w)', r'w/m(?!\w)', r'm/f(?!\w)', r'f/m(?!\w)',
         ]
         
         cleaned = title
