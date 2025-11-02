@@ -108,8 +108,21 @@ class TrelloConnect:
         return f"[{company}] {title} ({location})"
     
     def _build_card_description(self, job_data: Dict[str, Any]) -> str:
-        """Build card description from job data."""
-        return job_data.get('job_description', 'No job description available')
+        """Build card description from job data.
+        
+        Trello has a 16,384 character limit for card descriptions.
+        Truncate long job descriptions to fit comfortably within this limit.
+        """
+        description = job_data.get('job_description', 'No job description available')
+        
+        # Trello limit: 16,384 characters
+        # Use 15,000 to leave some margin for any special characters
+        max_chars = 15000
+        
+        if len(description) > max_chars:
+            description = description[:max_chars] + "...\n\n[Description truncated - see full posting at job URL]"
+        
+        return description
     
     def _enrich_job_data(self, job_data: Dict[str, Any]) -> Dict[str, Any]:
         """
