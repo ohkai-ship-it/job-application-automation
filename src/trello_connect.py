@@ -114,6 +114,7 @@ class TrelloConnect:
         Truncate long job descriptions to fit comfortably within this limit.
         """
         description = job_data.get('job_description', 'No job description available')
+        original_len = len(description)
         
         # Trello limit: 16,384 characters
         # Use 15,000 to leave some margin for any special characters
@@ -121,6 +122,10 @@ class TrelloConnect:
         
         if len(description) > max_chars:
             description = description[:max_chars] + "...\n\n[Description truncated - see full posting at job URL]"
+            new_len = len(description)
+            self.logger.info("Truncated job description: %d → %d characters", original_len, new_len)
+        else:
+            self.logger.info("Job description OK: %d characters (max: %d)", original_len, max_chars)
         
         return description
     
@@ -537,20 +542,26 @@ class TrelloConnect:
         
         # Create the card
         url = f"{self.base_url}/cards"
-        params = dict(self.auth_params)
-        params.update({
+        
+        # Prepare request data
+        # Note: The auth params (key, token) must go in the query string,
+        # but we can send the card data in the request body to avoid URL encoding overhead
+        auth_params = dict(self.auth_params)
+        
+        card_data = {
             'idList': self.leads_list_id,
             'name': card_name,
             'desc': card_desc,
             'pos': 'top',
-        })
+        }
         
         # Add labels if any
         if label_ids:
-            params['idLabels'] = ','.join(label_ids)
+            card_data['idLabels'] = ','.join(label_ids)
         
         try:
-            resp = self.requester('POST', url, params=params, timeout=10)
+            # Send with auth in query string and card data in JSON body
+            resp = self.requester('POST', url, params=auth_params, json=card_data, timeout=10)
             
             if getattr(resp, 'status_code', 200) in (200, 201):
                 card_data = resp.json()
